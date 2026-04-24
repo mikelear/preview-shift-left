@@ -84,8 +84,15 @@ spec:
             set -e
             # Relaxed rules — scenarios use inline multi-line strings that
             # would trip default yamllint. line-length off, document-start off.
+            # Permissive config — matches leartech/k8s/helm YAML conventions
+            # that yamllint's `default` profile would flag:
+            #   indent-sequences: whatever — allow list items aligned with or
+            #                     indented under their parent key (k8s norm)
+            #   line-length: disable — long URLs, resource descriptions etc.
+            #   document-start: disable — no leading `---` required
+            #   truthy: disable — we accept `yes`/`no` in comments & strings
             yamllint \
-              -d "{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable, comments: {min-spaces-from-content: 1}}}" \
+              -d "{extends: default, rules: {indentation: {indent-sequences: whatever}, line-length: disable, document-start: disable, truthy: disable, comments: {min-spaces-from-content: 1}}}" \
               .lighthouse/ kind.yaml scenarios/ fixtures/preview-helmfile/
             echo "yamllint: ok"
   podTemplate: {}
