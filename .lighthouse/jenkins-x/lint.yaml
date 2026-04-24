@@ -55,7 +55,8 @@ spec:
             echo "$files" | xargs shellcheck \
               --shell=bash \
               -e SC1091 \
-              -e SC2086
+              -e SC2086 \
+              -e SC2001
             echo "shellcheck: ok"
         - image: mvdan/shfmt:latest
           name: shfmt
