@@ -85,7 +85,7 @@ if [ -d "$REPO/dist" ] && [ -f "$REPO/nginx/default.conf" ]; then
   echo "[build]  thin nginx image from $REPO/dist/"
   cp "$REPO/nginx/default.conf" "$build_dir/default.conf"
   cp -R "$REPO/dist" "$build_dir/dist"
-  cat > "$build_dir/Dockerfile" <<'EOF'
+  cat >"$build_dir/Dockerfile" <<'EOF'
 FROM nginx:alpine
 COPY default.conf /etc/nginx/conf.d/default.conf
 COPY dist /tmp/dist
@@ -153,18 +153,18 @@ if [ -f "$REPO/preview/helmfile.yaml.gotmpl" ]; then
   [ -n "$PSL_SELECTOR" ] && selector_arg="--selector $PSL_SELECTOR"
 
   # shellcheck disable=SC2097,SC2098  # Assignments are env prefixes for the subshell command on last line.
-  (cd "$tmp_preview/preview" && \
-    APP_NAME="$app_name" \
-    PULL_NUMBER="$PULL_NUMBER" \
-    REPO_OWNER="$REPO_OWNER" \
-    REPO_NAME="$app_name" \
-    PREVIEW_NAMESPACE="$ns" \
-    VERSION="local-0.0.0" \
-    JX_CHART_REPOSITORY="localhost:5001/charts" \
-    DOCKER_REGISTRY="localhost:5001" \
-    DOCKER_REGISTRY_ORG="$REPO_OWNER" \
-    CLUSTER_ID="local" \
-    helmfile --kube-context "$CONTEXT" --file helmfile.yaml.gotmpl $selector_arg sync 2>&1 | tail -15)
+  (cd "$tmp_preview/preview" \
+    && APP_NAME="$app_name" \
+      PULL_NUMBER="$PULL_NUMBER" \
+      REPO_OWNER="$REPO_OWNER" \
+      REPO_NAME="$app_name" \
+      PREVIEW_NAMESPACE="$ns" \
+      VERSION="local-0.0.0" \
+      JX_CHART_REPOSITORY="localhost:5001/charts" \
+      DOCKER_REGISTRY="localhost:5001" \
+      DOCKER_REGISTRY_ORG="$REPO_OWNER" \
+      CLUSTER_ID="local" \
+      helmfile --kube-context "$CONTEXT" --file helmfile.yaml.gotmpl $selector_arg sync 2>&1 | tail -15)
 else
   # Fallback: consumer has no preview/helmfile — just install their chart.
   echo "[helm]   no preview/helmfile; installing charts/$CHART_NAME directly"
@@ -183,10 +183,11 @@ fi
 $K -n "$ns" patch ingress "$CHART_NAME" --type=merge \
   -p '{"spec":{"ingressClassName":"nginx"}}' 2>/dev/null || true
 if [ "$proto" = "https" ]; then
-  $K -n "$ns" patch ingress "$CHART_NAME" --type=merge -p "$(cat <<JSON
+  $K -n "$ns" patch ingress "$CHART_NAME" --type=merge -p "$(
+    cat <<JSON
 {"spec":{"tls":[{"hosts":["$host"],"secretName":"wildcard-localtest"}]}}
 JSON
-)" 2>/dev/null || true
+  )" 2>/dev/null || true
 fi
 
 # ---- post-apply hook (from substitutions) ----------------------------
