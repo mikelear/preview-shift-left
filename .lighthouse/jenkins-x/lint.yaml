@@ -61,15 +61,21 @@ spec:
         - image: mvdan/shfmt:latest
           name: shfmt
           resources: {}
-          script: |
-            #!/bin/sh
-            set -e
-            # -d prints a unified diff on drift and exits non-zero.
-            # -i 2: 2-space indent.  -ci: switch-case indent.  -bn: binary
-            # ops at line start.  -s: simplify.  These match the scripts
-            # already checked in.
-            shfmt -d -i 2 -ci -bn -s bin/ fixtures/local-substitutions/
-            echo "shfmt: ok"
+          # mvdan/shfmt is distroless — no shell. Invoke the binary
+          # directly via command/args; Tekton otherwise wraps `script:`
+          # with a `#!/bin/sh` that fails to exec in this image.
+          # -d diff + exit-non-zero on drift; -i 2 -ci -bn -s matches
+          # the style already checked in.
+          command: [shfmt]
+          args:
+          - "-d"
+          - "-i"
+          - "2"
+          - "-ci"
+          - "-bn"
+          - "-s"
+          - "bin/"
+          - "fixtures/local-substitutions/"
         - image: cytopia/yamllint:latest
           name: yamllint
           resources: {}
