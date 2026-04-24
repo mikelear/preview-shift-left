@@ -21,8 +21,16 @@ TOTAL=0
 declare -a FAIL_DETAIL
 
 section() { printf "\n== %s ==\n" "$1"; }
-pass() { printf "  [pass]  %s\n" "$1"; TOTAL=$((TOTAL + 1)); }
-fail() { printf "  [fail]  %s\n" "$1"; TOTAL=$((TOTAL + 1)); FAILS=$((FAILS + 1)); FAIL_DETAIL+=("$1"$'\n'"$2"); }
+pass() {
+  printf "  [pass]  %s\n" "$1"
+  TOTAL=$((TOTAL + 1))
+}
+fail() {
+  printf "  [fail]  %s\n" "$1"
+  TOTAL=$((TOTAL + 1))
+  FAILS=$((FAILS + 1))
+  FAIL_DETAIL+=("$1"$'\n'"$2")
+}
 
 echo "repo:        $REPO"
 echo "catalog:     ${CATALOG_DIR:-(not set — uses: refs skipped)}"
@@ -66,18 +74,18 @@ if [ -f "$REPO/preview/helmfile.yaml.gotmpl" ]; then
   # host/path. Mis-setting it locally produced `oci://oci://...` URLs
   # during harness dev — worth protecting against via this stub.
   out=$(
-    cd "$tmp" && \
-    APP_NAME="$(basename "$REPO")" \
-    PULL_NUMBER=42 \
-    PREVIEW_NAMESPACE="scn-render-$(basename "$REPO")-pr42" \
-    VERSION="0.0.0-render-SNAPSHOT" \
-    DOCKER_REGISTRY="localhost:5001" \
-    DOCKER_REGISTRY_ORG="mikelear" \
-    JX_CHART_REPOSITORY="localhost:5001/charts" \
-    CLUSTER_ID="local" \
-    REPO_OWNER="mikelear" \
-    REPO_NAME="$(basename "$REPO")" \
-    helmfile --file helmfile.yaml.gotmpl build 2>&1
+    cd "$tmp" \
+      && APP_NAME="$(basename "$REPO")" \
+      PULL_NUMBER=42 \
+      PREVIEW_NAMESPACE="scn-render-$(basename "$REPO")-pr42" \
+      VERSION="0.0.0-render-SNAPSHOT" \
+      DOCKER_REGISTRY="localhost:5001" \
+      DOCKER_REGISTRY_ORG="mikelear" \
+      JX_CHART_REPOSITORY="localhost:5001/charts" \
+      CLUSTER_ID="local" \
+      REPO_OWNER="mikelear" \
+      REPO_NAME="$(basename "$REPO")" \
+        helmfile --file helmfile.yaml.gotmpl build 2>&1
   )
   status=$?
   rm -rf "$tmp"
@@ -114,7 +122,7 @@ if [ -d "$REPO/.lighthouse/jenkins-x" ]; then
       # the referenced file exists locally.
       while IFS= read -r ref; do
         [ -z "$ref" ] && continue
-        if [[ "$ref" =~ ^uses:mikelear/leartech-pipeline-catalog/(.+)@ ]]; then
+        if [[ $ref =~ ^uses:mikelear/leartech-pipeline-catalog/(.+)@ ]]; then
           sub="${BASH_REMATCH[1]}"
           target="$CATALOG_DIR/$sub"
           if [ ! -f "$target" ]; then

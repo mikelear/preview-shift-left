@@ -28,7 +28,10 @@ name=$(yq -r '.name' "$SCENARIO")
 task_rel=$(yq -r '.task' "$SCENARIO")
 scen_dir=$(cd "$(dirname "$SCENARIO")" && pwd)
 task_abs=$(cd "$scen_dir" && cd "$(dirname "$task_rel")" && pwd)/$(basename "$task_rel")
-test -f "$task_abs" || { echo "error: task file not found: $task_abs"; exit 1; }
+test -f "$task_abs" || {
+  echo "error: task file not found: $task_abs"
+  exit 1
+}
 
 ns="scn-${name//_/-}-$(openssl rand -hex 3)"
 echo "[scenario] $name"
@@ -55,7 +58,7 @@ if [ "$fixtures_json" != "{}" ]; then
     key=$(echo "$row" | base64 -d | jq -r '.key')
     val=$(echo "$row" | base64 -d | jq -r '.value')
     mkdir -p "$tmp/$(dirname "$key")"
-    printf '%s' "$val" > "$tmp/$key"
+    printf '%s' "$val" >"$tmp/$key"
     # Mark likely scripts executable so the task's `bash end2end/run.sh`
     # (or `[ -x end2end/run.sh ]` checks) still work after untar.
     case "$key" in
@@ -127,7 +130,7 @@ spec:
     protocol: TCP
     name: http-${stub_port}
 "
-  done <<< "$stub_services"
+  done <<<"$stub_services"
 
   cat <<EOF | $K -n "$ns" apply -f - >/dev/null
 apiVersion: v1
@@ -193,8 +196,8 @@ host_aliases_yaml=""
 if [ "$stub_count" -gt 0 ]; then
   mb_pod_ip=$($K -n "$ns" get pod -l app=mountebank -o jsonpath='{.items[0].status.podIP}')
   owner=$(echo "$env_json" | jq -r '.REPO_OWNER // ""')
-  app=$(echo "$env_json"   | jq -r '.APP_NAME   // ""')
-  pr=$(echo "$env_json"    | jq -r '.PULL_NUMBER // ""')
+  app=$(echo "$env_json" | jq -r '.APP_NAME   // ""')
+  pr=$(echo "$env_json" | jq -r '.PULL_NUMBER // ""')
   if [ -n "$owner" ] && [ -n "$app" ] && [ -n "$pr" ]; then
     task_ns="jx-${owner}-${app}-pr-${pr}"
     # Build alias hostnames: <stub-name>.<task-ns>.svc.cluster.local
@@ -216,7 +219,7 @@ tr_name="scenario-$(openssl rand -hex 3)"
 
 # Build the TaskRun YAML. We let yq merge the taskSpec in cleanly.
 tmp_tr=$(mktemp)
-cat > "$tmp_tr" <<EOF
+cat >"$tmp_tr" <<EOF
 apiVersion: tekton.dev/v1
 kind: TaskRun
 metadata:
@@ -239,14 +242,14 @@ EOF
 # Tekton v1 TaskRun taskSpec supports .workspaces, .steps, .stepTemplate.
 # The catalog files use v1beta1 shape under .spec.pipelineSpec.tasks[0].taskSpec
 # which is Task-spec-shaped. Fields we touch: stepTemplate.env, steps[].
-yq -i "
+yq -i '
   del(.spec.taskSpec.metadata)
   | del(.spec.taskSpec.stepTemplate.resources)
   | del(.spec.taskSpec.stepTemplate.name)
-  | .spec.taskSpec.steps |= map(del(.resources) | del(select(.name == \"\") | .name))
-  | .spec.taskSpec.workspaces = [{\"name\": \"source\", \"mountPath\": \"/workspace/source\"}]
-  | .spec.workspaces = [{\"name\": \"source\", \"emptyDir\": {}}]
-" "$tmp_tr"
+  | .spec.taskSpec.steps |= map(del(.resources) | del(select(.name == "") | .name))
+  | .spec.taskSpec.workspaces = [{"name": "source", "mountPath": "/workspace/source"}]
+  | .spec.workspaces = [{"name": "source", "emptyDir": {}}]
+' "$tmp_tr"
 
 # Merge env
 if [ "$env_json" != "{}" ]; then

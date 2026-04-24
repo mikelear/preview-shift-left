@@ -53,13 +53,13 @@ psl_pre() {
   echo "[auth-ui] building auth-service (arm64 native) and pushing"
   local as_bin
   as_bin=$(mktemp)
-  (cd "${AUTH_SERVICE_REPO:-$HOME/leartech/leartech-auth-service}" && \
-    GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-    go build -ldflags='-w -s' -o "$as_bin" ./cmd/server) >/dev/null
+  (cd "${AUTH_SERVICE_REPO:-$HOME/leartech/leartech-auth-service}" \
+    && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+      go build -ldflags='-w -s' -o "$as_bin" ./cmd/server) >/dev/null
   local build_dir
   build_dir=$(mktemp -d)
   mv "$as_bin" "$build_dir/auth-service"
-  cat > "$build_dir/Dockerfile" <<'EOF'
+  cat >"$build_dir/Dockerfile" <<'EOF'
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 1000 auth
 USER auth
@@ -77,7 +77,7 @@ EOF
 
   # jx stub on PATH so the presync `jx secret copy` hook exits 0.
   PSL_JX_STUB=$(mktemp -d)
-  cat > "$PSL_JX_STUB/jx" <<'EOF'
+  cat >"$PSL_JX_STUB/jx" <<'EOF'
 #!/bin/sh
 # preview-shift-left stub — noop (preview-secrets ns is empty locally).
 exit 0
@@ -167,10 +167,11 @@ YAML
   for ing_host in "leartech-auth-service:${as_host}" "preview-auth-service-hydra-public:${hydra_host}"; do
     local ing="${ing_host%%:*}"
     local hp="${ing_host##*:}"
-    $K -n "$ns" patch ingress "$ing" --type=merge -p "$(cat <<JSON
+    $K -n "$ns" patch ingress "$ing" --type=merge -p "$(
+      cat <<JSON
 {"spec":{"ingressClassName":"nginx","tls":[{"hosts":["$hp"],"secretName":"wildcard-localtest"}]}}
 JSON
-)" >/dev/null 2>&1 || true
+    )" >/dev/null 2>&1 || true
   done
   $K -n "$ns" annotate ingress leartech-auth-service --overwrite \
     nginx.ingress.kubernetes.io/enable-cors=true \

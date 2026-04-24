@@ -30,7 +30,10 @@ mock_ui="${mock_rel:+$scen_dir/$mock_rel}"
 mock_ui="${mock_ui:-$HERE/fixtures/playwright/mock-ui}"
 nginx_conf="$HERE/fixtures/playwright/nginx.conf"
 
-test -d "$specs_dir"   || { echo "error: specs dir not found: $specs_dir"; exit 1; }
+test -d "$specs_dir" || {
+  echo "error: specs dir not found: $specs_dir"
+  exit 1
+}
 test -d "$repo/node_modules/playwright" || {
   echo "error: playwright not installed in $repo/node_modules"
   echo "       run 'npm install' in $repo first"
@@ -53,8 +56,14 @@ if [ -n "$base_url_decl" ]; then
   PREVIEW_URL_VAL="$base_url_decl"
   echo "[mode]     live  -> $PREVIEW_URL_VAL"
 else
-  test -d "$mock_ui"     || { echo "error: mock UI dir not found: $mock_ui"; exit 1; }
-  test -f "$nginx_conf"  || { echo "error: nginx conf not found: $nginx_conf"; exit 1; }
+  test -d "$mock_ui" || {
+    echo "error: mock UI dir not found: $mock_ui"
+    exit 1
+  }
+  test -f "$nginx_conf" || {
+    echo "error: nginx conf not found: $nginx_conf"
+    exit 1
+  }
   echo "[mock-ui]  $mock_ui"
   PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')
   CONTAINER="pw-mock-$(date +%s)-$$"
@@ -98,7 +107,7 @@ if [ -n "$chromium_args" ] || [ "$ignore_https" = "true" ]; then
   # resolution. Unique per-run name avoids collisions; trap cleanup removes.
   pw_config_override="${repo}/playwright.override.${RANDOM}.ts"
   args_json=$(yq -o=json '.chromium_args // []' "$SCENARIO")
-  cat > "$pw_config_override" <<EOF
+  cat >"$pw_config_override" <<EOF
 import base from './${specs_rel}/playwright.config';
 export default {
   ...base,
@@ -138,13 +147,13 @@ if [ -n "$only_specs" ]; then
   done
   PREVIEW_URL="$PREVIEW_URL_VAL" \
     npx playwright test \
-      --config "$config_arg" $workers_arg \
-      $spec_paths 2>&1 | tee "$log"
+    --config "$config_arg" $workers_arg \
+    $spec_paths 2>&1 | tee "$log"
 else
   PREVIEW_URL="$PREVIEW_URL_VAL" \
     npx playwright test \
-      --config "$config_arg" $workers_arg \
-      "$specs_rel" 2>&1 | tee "$log"
+    --config "$config_arg" $workers_arg \
+    "$specs_rel" 2>&1 | tee "$log"
 fi
 rc=${PIPESTATUS[0]}
 set -e

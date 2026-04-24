@@ -17,10 +17,17 @@ say() { printf "  %-14s %s\n" "$1" "$2"; }
 
 # -- probe -------------------------------------------------------------
 
-docker_installed=0; docker_ok=0; docker_ctx=""; docker_backend=""
-podman_installed=0; podman_ok=0
-colima_installed=0; colima_running=0
-podman_machine_present=0; podman_machine_running=0; podman_machine_rootful=0
+docker_installed=0
+docker_ok=0
+docker_ctx=""
+docker_backend=""
+podman_installed=0
+podman_ok=0
+colima_installed=0
+colima_running=0
+podman_machine_present=0
+podman_machine_running=0
+podman_machine_rootful=0
 
 if has docker; then
   docker_installed=1
@@ -36,7 +43,7 @@ if has podman; then
   podman info >/dev/null 2>&1 && podman_ok=1
   # Machine state matters on macOS/Windows (Linux runs podman natively).
   case "$(uname)" in
-    Darwin|Windows*|MINGW*|MSYS*)
+    Darwin | Windows* | MINGW* | MSYS*)
       mline=$(podman machine list --format '{{.Name}} running={{.Running}} rootful={{.Rootful}}' 2>/dev/null | head -1)
       if [ -n "$mline" ]; then
         podman_machine_present=1
@@ -74,8 +81,10 @@ if [ $podman_installed = 1 ]; then
     say "  status:" "not responding"
   fi
   if [ $podman_machine_present = 1 ]; then
-    state="stopped"; [ $podman_machine_running = 1 ] && state="running"
-    mode="rootless"; [ $podman_machine_rootful = 1 ] && mode="rootful"
+    state="stopped"
+    [ $podman_machine_running = 1 ] && state="running"
+    mode="rootless"
+    [ $podman_machine_rootful = 1 ] && mode="rootful"
     say "  machine:" "$state / $mode"
   fi
 fi
@@ -139,8 +148,8 @@ else
   fi
 
   if [ $docker_installed = 1 ] && [ $docker_ok = 0 ] \
-     && [ "$docker_ctx" != "colima" ] \
-     && [ $colima_installed = 0 ] && [ $podman_installed = 0 ]; then
+    && [ "$docker_ctx" != "colima" ] \
+    && [ $colima_installed = 0 ] && [ $podman_installed = 0 ]; then
     echo "  docker (CLI present, daemon unreachable):"
     echo "      open Docker Desktop, or: docker context use default"
   fi
@@ -164,7 +173,7 @@ missing=0
 brew_formula() {
   case "$1" in
     tkn) echo tektoncd-cli ;;
-    *)   echo "$1" ;;
+    *) echo "$1" ;;
   esac
 }
 for bin in kind kubectl tkn helm helmfile yq jq openssl; do
