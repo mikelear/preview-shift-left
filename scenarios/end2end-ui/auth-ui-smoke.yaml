@@ -1,0 +1,26 @@
+# Scenario: Playwright specs against the static Tier B mock UI.
+#
+# Coverage with the current mock:
+#   01-page-loads          — PASS (Tier A: static index.html has app-root + form)
+#   02-login-form          — PASS (Tier A)
+#   03-login-flow          — PASS (Tier B: GET /callback -> authenticated.html)
+#   05-sign-out            — PASS (Tier B: /logout serves index.html)
+#   06-two-factor-setup    — PASS (Tier B: /two-factor-settings serves 2FA page)
+#
+#   04-token-renewal       — SKIPPED (requires real Hydra admin API to revoke
+#                            a session; that's tier 3 territory — deploy Hydra
+#                            locally and extend preview-up.sh to cover it).
+#
+# Any selector/assertion change in 01/02/03/05/06 can be iterated here in
+# ~15s. For 04 + real OIDC flow, use `make preview REPO=...` (tier 3).
+
+kind: playwright-run
+name: auth-ui-smoke
+repo: ../../../leartech-auth-ui
+
+only:
+  - 01-page-loads.spec.ts
+  - 02-login-form.spec.ts
+  - 03-login-flow.spec.ts
+  - 05-sign-out.spec.ts
+  - 06-two-factor-setup.spec.ts

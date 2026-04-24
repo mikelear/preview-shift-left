@@ -1,0 +1,23 @@
+apiVersion: config.lighthouse.jenkins-x.io/v1alpha1
+kind: TriggerConfig
+spec:
+  presubmits:
+  - name: lint
+    context: "lint"
+    always_run: true
+    source: lint.yaml
+  - name: ai-review
+    context: "ai-review"
+    always_run: true
+    source: ai-review/pullrequest.yaml
+  - name: security-scan
+    context: "security-scan"
+    always_run: true
+    source: security-scan/pullrequest.yaml
+  - name: ai-feedback
+    context: ai-feedback
+    always_run: false
+    optional: true
+    trigger: "(?m)^/ai-feedback"
+    rerun_command: "/ai-feedback"
+    source: ai-review/feedback.yaml

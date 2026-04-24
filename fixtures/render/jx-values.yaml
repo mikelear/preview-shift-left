@@ -1,0 +1,21 @@
+# Stand-in for the cluster-populated jx-values.yaml that `jx preview create`
+# drops into preview/ at pipeline runtime. Real values come from the cluster's
+# jx requirements file (jx-requirements.yml on each cluster). These here are
+# just enough to make `helmfile template` resolve the domain + ingress block.
+jxRequirements:
+  cluster:
+    clusterName: local-render
+    provider: kind
+    project: local
+    region: local
+  ingress:
+    domain: localtest.me
+    externalDNS: false
+    namespaceSubDomain: -pr.
+    serviceType: ClusterIP
+    tls:
+      email: ""
+      enabled: false
+      production: false
+      secretName: ""
+  webhook: lighthouse

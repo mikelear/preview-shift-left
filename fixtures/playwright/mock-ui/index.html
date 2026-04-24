@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>auth-ui (mock)</title>
+</head>
+<body>
+  <app-root>
+    <header>
+      <h1>Leartech Auth (mock)</h1>
+      <nav>
+        <a href="/login">Login</a>
+        <a href="/two-factor-settings">2FA Settings</a>
+      </nav>
+    </header>
+    <main>
+      <h2>Sign in</h2>
+      <p>This is a mock UI served for Playwright smoke tests. It is not a real auth flow.</p>
+      <!-- Mock auth: GET form so nginx can serve /callback as a static page.
+           Real auth-ui uses the Angular OIDC library to redirect to Hydra. -->
+      <form action="/callback" method="get" id="login-form">
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" autocomplete="email" required />
+        <label for="password">Password</label>
+        <input type="password" name="password" id="password" autocomplete="current-password" required />
+        <button type="submit">Login</button>
+      </form>
+    </main>
+  </app-root>
+</body>
+</html>

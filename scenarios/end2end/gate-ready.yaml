@@ -1,0 +1,64 @@
+# Scenario: end2end gate-check reports ready on first probe.
+#
+# Exercises the preview-gate branch of
+# leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml:
+# gate returns 200 immediately, task invokes end2end/run.sh, sees
+# valid results.json, exits PASS.
+#
+# Stage 3 MVP simplification: GIT_TOKEN is empty so the sticky-comment
+# post_sticky() code path skips the GitHub API call. No TLS-pinned
+# host stub needed. Covering sticky-comment logic belongs in a later
+# scenario once the harness grows a TLS-capable stub fixture.
+
+kind: task-test
+name: gate-ready
+task: ../../../leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml
+
+env:
+  APP_NAME: leartech-go-service-template
+  PULL_NUMBER: "42"
+  REPO_OWNER: mikelear
+  REPO_NAME: leartech-go-service-template
+  CLUSTER_ID: local
+  GIT_TOKEN: ""
+  DOMAIN: localtest.me
+
+fixtures:
+  .jx/variables.sh: |
+    export APP_NAME=leartech-go-service-template
+    export PULL_NUMBER=42
+    export REPO_OWNER=mikelear
+    export REPO_NAME=leartech-go-service-template
+    export VERSION=0.0.0-PR-42-1-SNAPSHOT
+    export DOMAIN=localtest.me
+  end2end/run.sh: |
+    #!/usr/bin/env bash
+    # Minimal consumer script: always passes, emits valid results.json.
+    mkdir -p end2end
+    cat > end2end/results.json <<'JSON'
+    {
+      "success": true,
+      "summary": "1/1 checks passed",
+      "tests": [
+        { "name": "smoke", "status": "pass", "duration_ms": 42, "message": "ok" }
+      ],
+      "metadata": { "preview_url": "stub", "version": "0.0.0-PR-42-1-SNAPSHOT" }
+    }
+    JSON
+
+stubs:
+  - name: preview-gate
+    port: 8090
+    responses:
+      - method: GET
+        path: /cgi-bin/gate
+        status: 200
+        body: '{"ready":true,"deployments":["preview"],"version":"0.0.0-PR-42-1-SNAPSHOT"}'
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "preview-gate detected"
+    - "gate reports READY"
+    - "preview stable; invoking end2end/run.sh"
+    - "PASS: end2end complete"

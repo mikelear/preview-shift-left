@@ -1,0 +1,19 @@
+# Local jx-values.yaml override. Real cluster's `jx preview create` writes
+# this per-cluster from jx-requirements.yml; we set it statically for local.
+jxRequirements:
+  cluster:
+    clusterName: local-preview
+    provider: kind
+    project: local
+    region: local
+  ingress:
+    domain: localtest.me
+    externalDNS: false
+    namespaceSubDomain: -pr42.
+    serviceType: ClusterIP
+    tls:
+      email: ""
+      enabled: false
+      production: false
+      secretName: ""
+  webhook: lighthouse

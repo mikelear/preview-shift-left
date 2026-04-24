@@ -1,0 +1,14 @@
+# Per-machine generated — self-signed wildcard cert for *.localtest.me.
+# Regenerated on first `make preview WITH_TLS=1`.
+fixtures/tls/
+
+# Scenario run artifacts
+test-results/
+pr-logs/
+
+# macOS / editor cruft
+.DS_Store
+*.swp
+
+# Claude runtime data (local only)
+.claude/settings.local.json

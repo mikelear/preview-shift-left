@@ -1,0 +1,53 @@
+# Scenario: Playwright specs against the LIVE preview deployed by `make preview`.
+#
+# Prereq: `make preview REPO=../leartech-auth-ui` is running, so
+# http://leartech-auth-ui-pr42.localtest.me:8080 is serving the real
+# auth-ui build. This scenario points Playwright at that URL directly
+# (no mock UI container) so the specs exercise the real Angular bundle.
+#
+# Tier-3-partial coverage today (auth-ui alone, no Hydra / auth-service):
+#   01, 02 — Tier A page loads. Pass.
+#   03     — Login flow fails: real Angular OIDC library tries to redirect
+#            to a configured Hydra URL that isn't there yet. That's the
+#            signal that Hydra belongs in the preview stack next.
+#   04, 05, 06 — Same: they depend on the OIDC flow completing.
+#
+# Use this scenario to:
+#   - confirm `make preview` actually serves pages through the ingress
+#   - demonstrate the exact gap Stage 4.x (Hydra) will close
+
+kind: playwright-run
+name: auth-ui-live
+repo: ../../../leartech-auth-ui
+
+# HTTPS via self-signed wildcard cert for *.localtest.me (fixtures/tls/).
+# Angular OIDC uses PKCE (crypto.subtle.digest) which Chromium only exposes
+# on secure contexts — HTTPS or localhost. Plain HTTP on a non-localhost
+# hostname fails with "Cannot read properties of undefined (reading 'digest')".
+#
+# Runs against the full WITH_AUTH_STACK=1 preview: auth-ui + auth-service
+# + Hydra (bundled) + MongoDB. The end2end/01-register-oauth-client.sh +
+# 02-seed-test-user.sh scripts are invoked by preview-up.sh — same scripts
+# the real catalog task runs, so selector/assertion changes iterate in ~12s
+# locally vs. ~15 min for a cluster PR round-trip.
+base_url: https://leartech-auth-ui-pr42.localtest.me:8443
+ignore_https_errors: true
+
+# Force serial execution. Hydra's dsn: memory stores sessions in-process,
+# so concurrent login flows (spec 03, 05, 06 each doing their own login in
+# parallel workers) race and drop state, producing flaky failures. Real
+# clusters use Postgres DSN and don't have this issue.
+workers: 1
+
+# Spec 04 (token-renewal) requires a `kubectl`/API-level DELETE to
+# Hydra admin to revoke the session — the browser can't make that
+# cross-namespace call from a pure Playwright context. It's a tier-3
+# "cluster-adjacent test runner" scenario, not a spec the browser can
+# exercise. Excluded here; the other 8 tests cover login/sign-out/2FA
+# end-to-end via the real OIDC flow.
+only:
+  - 01-page-loads.spec.ts
+  - 02-login-form.spec.ts
+  - 03-login-flow.spec.ts
+  - 05-sign-out.spec.ts
+  - 06-two-factor-setup.spec.ts

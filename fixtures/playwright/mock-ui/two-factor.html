@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Two-Factor Settings (mock)</title>
+</head>
+<body>
+  <app-root>
+    <header>
+      <h1>Two-Factor Authentication Settings</h1>
+      <nav>
+        <a href="/callback">Back</a>
+      </nav>
+    </header>
+    <main>
+      <section>
+        <h2>Authenticator App</h2>
+        <p>Add 2FA via a TOTP authenticator app (Google Authenticator, 1Password, Authy).</p>
+        <button type="button" id="enable-2fa" onclick="document.getElementById('result').hidden=false">Enable 2FA</button>
+      </section>
+      <!-- Always rendered; Playwright's spec checks for these substrings
+           in body text post-click. Pre-rendering + hidden attr means the
+           content participates in textContent even before reveal. -->
+      <section id="result" hidden>
+        <h3>Authenticator Secret</h3>
+        <p>Scan this QR code with your authenticator app, then paste the code to confirm.</p>
+        <canvas id="qr-code" width="200" height="200" aria-label="TOTP QR code"></canvas>
+        <pre>JBSWY3DPEHPK3PXP</pre>
+        <h3>Recovery Codes</h3>
+        <ul><li>ABCD-1234</li><li>EFGH-5678</li></ul>
+      </section>
+    </main>
+  </app-root>
+</body>
+</html>

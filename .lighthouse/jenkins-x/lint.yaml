@@ -1,0 +1,87 @@
+# Shell + YAML quality gate.
+#
+# Three tools, three separate steps so any red step names the offending
+# file directly in the PR check output:
+#   shellcheck  — bash static analysis (catches SC2* classes)
+#   shfmt       — bash formatting check (--diff, non-zero on drift)
+#   yamllint    — YAML syntax/structure on scenarios, kind.yaml, triggers
+#
+# This could move into `mikelear/leartech-pipeline-catalog/tasks/shell-lint/`
+# once a second shell-based consumer appears — the step scripts are pure,
+# no repo-specific config.
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  creationTimestamp: null
+  name: lint
+spec:
+  pipelineSpec:
+    tasks:
+    - name: lint
+      resources: {}
+      taskSpec:
+        metadata: {}
+        stepTemplate:
+          env:
+          - name: HOME
+            value: /tekton/home
+          envFrom:
+          - secretRef:
+              name: jx-boot-job-env-vars
+              optional: true
+          name: ""
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          workingDir: /workspace/source
+        steps:
+        - image: uses:jenkins-x/jx3-pipeline-catalog/tasks/git-clone/git-clone-pr.yaml@versionStream
+          name: ""
+          resources: {}
+        - image: koalaman/shellcheck-alpine:stable
+          name: shellcheck
+          resources: {}
+          script: |
+            #!/bin/sh
+            set -e
+            # Scope: all executable bash under bin/ and any setup.sh shipped
+            # by consumer substitutions (fixtures/local-substitutions/<repo>/).
+            files=$(find bin fixtures/local-substitutions -name '*.sh' -type f 2>/dev/null)
+            if [ -z "$files" ]; then
+              echo "no shell scripts found — nothing to lint"
+              exit 0
+            fi
+            echo "$files" | xargs shellcheck \
+              --shell=bash \
+              -e SC1091 \
+              -e SC2086
+            echo "shellcheck: ok"
+        - image: mvdan/shfmt:latest
+          name: shfmt
+          resources: {}
+          script: |
+            #!/bin/sh
+            set -e
+            # -d prints a unified diff on drift and exits non-zero.
+            # -i 2: 2-space indent.  -ci: switch-case indent.  -bn: binary
+            # ops at line start.  -s: simplify.  These match the scripts
+            # already checked in.
+            shfmt -d -i 2 -ci -bn -s bin/ fixtures/local-substitutions/
+            echo "shfmt: ok"
+        - image: cytopia/yamllint:latest
+          name: yamllint
+          resources: {}
+          script: |
+            #!/bin/sh
+            set -e
+            # Relaxed rules — scenarios use inline multi-line strings that
+            # would trip default yamllint. line-length off, document-start off.
+            yamllint \
+              -d "{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable, comments: {min-spaces-from-content: 1}}}" \
+              .lighthouse/ kind.yaml scenarios/ fixtures/preview-helmfile/
+            echo "yamllint: ok"
+  podTemplate: {}
+  serviceAccountName: tekton-bot
+  timeout: 15m
+status: {}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Authenticated (mock)</title>
+</head>
+<body>
+  <app-root>
+    <header>
+      <h1>Authenticated</h1>
+      <nav>
+        <a href="/two-factor-settings">2FA Settings</a>
+      </nav>
+    </header>
+    <main>
+      <!-- Tokens shown inline so Playwright specs that check for JWT-claim
+           substrings ("iss", "sub") match. This is a static mock — no real
+           JWT is issued. -->
+      <section>
+        <h2>Token</h2>
+        <pre>{
+  "iss": "https://hydra-pr42.localtest.me",
+  "sub": "test@leartech.com",
+  "aud": "frontend-services",
+  "exp": 9999999999
+}</pre>
+      </section>
+      <form action="/logout" method="get">
+        <button type="submit">Sign Out</button>
+      </form>
+    </main>
+  </app-root>
+</body>
+</html>

@@ -1,0 +1,46 @@
+# Scenario: govulncheck catalog task on the golden Go service template.
+#
+# Exists purely to prove the harness is repo-agnostic: different catalog
+# task, different consumer, zero changes to run-scenario.sh.
+#
+# Fixtures seed enough Go source to build a module, then run govulncheck.
+# The catalog task image is golang:1.25-alpine (pulled once, cached).
+# No stubs needed — govulncheck is self-contained, reads go.mod/go.sum
+# from the workspace.
+
+kind: task-test
+name: govulncheck-template
+task: ../../../leartech-pipeline-catalog/tasks/govulncheck/pullrequest.yaml
+
+env:
+  APP_NAME: leartech-go-service-template
+  PULL_NUMBER: "42"
+  REPO_OWNER: mikelear
+  REPO_NAME: leartech-go-service-template
+  CLUSTER_ID: local
+  # Pin to a very old govulncheck for speed + reproducibility. The task's
+  # default is v1.1.4; override here to v1.0.0 to prove the env-override
+  # path works end-to-end (and to speed up the Go install).
+  GOVULNCHECK_VERSION: v1.1.4
+
+fixtures:
+  # Tiny Go module with a trivial main.go — enough for `go mod download`
+  # + `govulncheck ./...` to exercise the task's real code path without
+  # needing the full service template.
+  go.mod: |
+    module local/govulncheck-scenario
+
+    go 1.25
+  main.go: |
+    package main
+
+    import "fmt"
+
+    func main() {
+        fmt.Println("hello from harness scenario")
+    }
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "No vulnerabilities found."

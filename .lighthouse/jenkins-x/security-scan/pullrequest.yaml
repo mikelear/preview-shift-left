@@ -1,0 +1,23 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  creationTimestamp: null
+  name: security-scan
+spec:
+  pipelineSpec:
+    tasks:
+    - name: security-scan
+      resources: {}
+      taskSpec:
+        metadata: {}
+        stepTemplate:
+          image: uses:mikelear/leartech-pipeline-catalog/tasks/security-scan/pullrequest.yaml@main
+          name: ""
+          resources: {}
+          workingDir: /workspace/source
+        steps:
+        - name: ""
+          resources: {}
+  serviceAccountName: tekton-bot
+  timeout: 30m
+status: {}

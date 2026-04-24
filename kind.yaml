@@ -1,0 +1,33 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: preview-shift-left
+
+# Single control-plane node. Multi-node buys nothing for this harness and
+# doubles cold-start time. Add workers only if a future scenario needs to
+# exercise pod scheduling or DaemonSet behaviour.
+nodes:
+- role: control-plane
+  # ingress-nginx (kind flavour) selects on this label.
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  # Host-side port mapping so https://<host>-pr-N.localtest.me:8443 lands
+  # on the in-cluster ingress controller without a LoadBalancer.
+  extraPortMappings:
+  - containerPort: 80
+    hostPort: 8080
+    protocol: TCP
+  - containerPort: 443
+    hostPort: 8443
+    protocol: TCP
+
+# Mirror localhost:5001 -> the `kind-registry` container (started by the
+# Makefile) so images pushed from the host are resolvable by name from
+# inside the cluster. Standard kind+registry recipe.
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+    endpoint = ["http://kind-registry:5000"]
