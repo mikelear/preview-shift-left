@@ -1,0 +1,43 @@
+# Scenario: run the security-scan catalog task locally against a known-clean
+# source tree. Reproduces what would happen on a cluster without needing the
+# cluster — exercises `ghcr.io/mikelear/security-tools:latest`'s gitleaks +
+# semgrep + grype scripts against a tiny fixture.
+#
+# Extends the "test catalog changes locally" story into security-scan — if
+# a future change to the scan logic breaks, this scenario catches it in
+# ~30s rather than waiting for a PR round-trip.
+
+kind: task-test
+name: security-scan-clean
+task: ../../../leartech-pipeline-catalog/tasks/security-scan/pullrequest.yaml
+
+env:
+  APP_NAME: preview-shift-left
+  PULL_NUMBER: "1"
+  REPO_OWNER: mikelear
+  REPO_NAME: preview-shift-left
+  CLUSTER_ID: local
+  GIT_TOKEN: ""               # skips the sticky-comment GitHub POST path
+
+fixtures:
+  # Minimal clean source — nothing for gitleaks to flag, nothing for
+  # semgrep to match on. The scan should exit 0 with "no findings".
+  README.md: |
+    # fixture
+    Tiny test fixture for security-scan harness smoke.
+  main.go: |
+    package main
+
+    import "fmt"
+
+    func main() {
+        fmt.Println("hello")
+    }
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "Security Scan: **PASS**"
+    - "0 leaked secrets"
+    - "Gitleaks findings: 0"
+    - "errors=0, warnings=0, info=0"
