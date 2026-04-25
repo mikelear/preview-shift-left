@@ -134,10 +134,10 @@ preview-down: ## tear down a preview namespace. usage: make preview-down REPO=..
 	$(KUBECTL) delete ns $$ns --wait=false 2>/dev/null || true; \
 	echo "[deleted] $$ns"
 
-test: ## run one scenario. usage: make test SCENARIO=scenarios/<path>.yaml
-	@test -n "$(SCENARIO)" || { echo "usage: make test SCENARIO=scenarios/<path>.yaml"; exit 2; }
+test: ## run one scenario. usage: make test SCENARIO=scenarios/<path>.yaml [REPO=<path>] [APP_NAME=...]
+	@test -n "$(SCENARIO)" || { echo "usage: make test SCENARIO=scenarios/<path>.yaml [REPO=<path>] [APP_NAME=...]"; exit 2; }
 	@$(MAKE) -s up
-	bin/run-scenario.sh $(SCENARIO)
+	REPO=$(REPO) APP_NAME=$(APP_NAME) PULL_NUMBER=$(PULL_NUMBER) REPO_OWNER=$(REPO_OWNER) bin/run-scenario.sh $(SCENARIO)
 
 list: ## list scenario files
 	@find scenarios -type f -name '*.yaml' | sort

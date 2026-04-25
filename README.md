@@ -56,30 +56,58 @@ Scenarios are the unit of testable work. A scenario is a YAML file that declares
 
 Used for: testing catalog Tekton tasks without pushing a PR. Edit the task, re-run, picks up the change live.
 
+**Repo-agnostic by default.** Use `${VAR}` placeholders + `from_repo` fixtures so one scenario YAML targets N consumer repos without per-repo copies.
+
 ```yaml
 # scenarios/end2end/gate-ready.yaml
 kind: task-test
 name: gate-ready
 task: ../../../leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml
+
 env:
-  APP_NAME: leartech-go-service-template
-  PULL_NUMBER: "42"
-  GIT_TOKEN: ""                 # skips sticky-comment path (no real GH API locally)
+  APP_NAME: ${APP_NAME}            # auto-derived from REPO basename, or pass APP_NAME=...
+  PULL_NUMBER: ${PULL_NUMBER}      # default 42
+  REPO_OWNER: ${REPO_OWNER}        # default mikelear
+  REPO_NAME: ${REPO_NAME}
+  GIT_TOKEN: ${GIT_TOKEN}          # default empty — skips sticky-comment path
+  DOMAIN: ${DOMAIN}                # default localtest.me
+  CLUSTER_ID: ${CLUSTER_ID}
+
 fixtures:
-  .jx/variables.sh: |
-    export APP_NAME=leartech-go-service-template
-    # ...
+  .jx/variables.sh:
+    template: |                    # `template` — vars expanded at runtime
+      export APP_NAME=${APP_NAME}
+      export VERSION=${VERSION}
+      # ...
+  end2end/run.sh:
+    from_repo: end2end/run.sh      # `from_repo` — copies $REPO/end2end/run.sh
+    fallback: |                     # used when REPO is unset
+      #!/usr/bin/env bash
+      # minimal always-passing fallback
+      ...
+
 stubs:
-  - name: preview-gate           # becomes a k8s Service; in-cluster DNS resolves
+  - name: preview-gate
     port: 8090
     responses:
-      - {method: GET, path: /cgi-bin/gate, status: 200, body: '{"ready":true}'}
+      - {method: GET, path: /cgi-bin/gate, status: 200, body: '{"ready":true,"version":"${VERSION}"}'}
+
 expect:
   taskrun_status: Succeeded
   stdout_contains:
     - "gate reports READY"
     - "PASS: end2end complete"
 ```
+
+Run against any consumer:
+
+```bash
+make test SCENARIO=scenarios/end2end/gate-ready.yaml                          # uses fallback fixtures
+make test SCENARIO=scenarios/end2end/gate-ready.yaml REPO=../leartech-auth-ui # auth-ui's real end2end/run.sh
+make test SCENARIO=scenarios/end2end/gate-ready.yaml APP_NAME=foo PULL_NUMBER=99
+```
+
+Variable expansion uses Python's `os.path.expandvars` — only `$NAME` / `${NAME}` shapes are touched (literals like `$1`, `$@`, `$$` pass through), no shell `eval`. Vars not in the environment expand to empty.
 
 ### `playwright-run` — Playwright specs against mock or live UI
 

@@ -24,6 +24,37 @@ CONTEXT="kind-${CLUSTER}"
 MOUNTEBANK_IMAGE="${MOUNTEBANK_IMAGE:-bbyars/mountebank:2.9.1}"
 K="kubectl --context ${CONTEXT}"
 
+# ---- scenario parameterisation ---------------------------------------
+# Auto-derive APP_NAME / REPO_NAME from REPO=<path> if provided. Lets one
+# scenario YAML target N consumer repos via:
+#   make test SCENARIO=scenarios/end2end/gate-ready.yaml REPO=../leartech-auth-ui
+# Scenario YAML can use ${VAR} placeholders in env values, fixture
+# bodies, and stub responses; expanded via Python's expandvars (no shell
+# eval, no SC2086-style word-splitting risk).
+
+if [ -n "${REPO:-}" ]; then
+  REPO=$(cd "$REPO" && pwd)
+  : "${APP_NAME:=$(basename "$REPO")}"
+fi
+: "${APP_NAME:=leartech-go-service-template}"
+: "${REPO_NAME:=$APP_NAME}"
+: "${REPO_OWNER:=mikelear}"
+: "${PULL_NUMBER:=42}"
+: "${DOMAIN:=localtest.me}"
+: "${CLUSTER_ID:=local}"
+: "${GIT_TOKEN:=}"
+: "${VERSION:=0.0.0-PR-${PULL_NUMBER}-1-SNAPSHOT}"
+export REPO APP_NAME REPO_NAME REPO_OWNER PULL_NUMBER DOMAIN CLUSTER_ID GIT_TOKEN VERSION
+
+# ${VAR} / $VAR expansion using only os.environ — no shell eval, no
+# SC2086 word-splitting risk. Reads stdin, writes stdout. Variables not
+# in environment expand to empty (matches `${VAR:-}` shell semantics).
+expand_vars() {
+  python3 -c 'import os,sys;sys.stdout.write(os.path.expandvars(sys.stdin.read()))'
+}
+
+echo "[params]   APP_NAME=$APP_NAME REPO_OWNER=$REPO_OWNER PULL_NUMBER=$PULL_NUMBER DOMAIN=$DOMAIN${REPO:+ REPO=$REPO}"
+
 name=$(yq -r '.name' "$SCENARIO")
 task_rel=$(yq -r '.task' "$SCENARIO")
 scen_dir=$(cd "$(dirname "$SCENARIO")" && pwd)
@@ -52,13 +83,39 @@ fixtures_json=$(yq -o=json '.fixtures // {}' "$SCENARIO")
 fixtures_secret=""
 if [ "$fixtures_json" != "{}" ]; then
   tmp=$(mktemp -d)
-  # The inner subshell runs in a pipe, so we can't use `tmp` from a while-loop
-  # directly. Materialise with process substitution instead.
+  # Three fixture shapes supported (back-compat with the original string form):
+  #   key: "literal-string"                        — used as-is, with var expansion
+  #   key: { template: "..." }                     — expanded via os.path.expandvars
+  #   key: { from_repo: "<path>" [, fallback: "..."] }
+  #     — copies $REPO/<path> if REPO is set; falls back to inline string otherwise.
   while read -r row; do
     key=$(echo "$row" | base64 -d | jq -r '.key')
-    val=$(echo "$row" | base64 -d | jq -r '.value')
+    vtype=$(echo "$row" | base64 -d | jq -r '.value | type')
     mkdir -p "$tmp/$(dirname "$key")"
-    printf '%s' "$val" >"$tmp/$key"
+
+    if [ "$vtype" = "string" ]; then
+      content=$(echo "$row" | base64 -d | jq -r '.value' | expand_vars)
+    else
+      from_repo=$(echo "$row" | base64 -d | jq -r '.value.from_repo // empty')
+      template=$(echo "$row" | base64 -d | jq -r '.value.template // empty')
+      fallback=$(echo "$row" | base64 -d | jq -r '.value.fallback // empty')
+
+      if [ -n "$from_repo" ] && [ -n "${REPO:-}" ] && [ -f "$REPO/$from_repo" ]; then
+        # Read the consumer's actual file. No expansion — it's the file
+        # that ships with the consumer and runs on the cluster verbatim.
+        content=$(cat "$REPO/$from_repo")
+        echo "[fixtures] $key <- \$REPO/$from_repo"
+      elif [ -n "$template" ]; then
+        content=$(printf '%s' "$template" | expand_vars)
+      elif [ -n "$fallback" ]; then
+        content=$(printf '%s' "$fallback" | expand_vars)
+      else
+        echo "error: fixture $key has from_repo=$from_repo but \$REPO not set or file missing, no fallback declared"
+        exit 1
+      fi
+    fi
+
+    printf '%s' "$content" >"$tmp/$key"
     # Mark likely scripts executable so the task's `bash end2end/run.sh`
     # (or `[ -x end2end/run.sh ]` checks) still work after untar.
     case "$key" in
@@ -80,7 +137,8 @@ fi
 # Each stub becomes a Service at its declared name so in-cluster DNS
 # like preview-gate.<ns>.svc.cluster.local resolves.
 
-stubs_json=$(yq -o=json '.stubs // []' "$SCENARIO")
+# Stub bodies often embed APP_NAME / VERSION / etc. — expand placeholders.
+stubs_json=$(yq -o=json '.stubs // []' "$SCENARIO" | expand_vars)
 stub_count=$(echo "$stubs_json" | jq 'length')
 
 if [ "$stub_count" -gt 0 ]; then
@@ -183,7 +241,8 @@ fi
 #   - emptyDir workspace at /workspace/source
 #   - initContainer that untars the fixtures tarball into the workspace
 
-env_json=$(yq -o=json '.env // {}' "$SCENARIO")
+# Expand ${VAR} placeholders in env values (e.g. APP_NAME, PULL_NUMBER).
+env_json=$(yq -o=json '.env // {}' "$SCENARIO" | expand_vars)
 
 # In-cluster DNS fidelity via hostAliases:
 # Catalog task scripts hardcode hostnames like
@@ -330,7 +389,7 @@ while read -r expected; do
     echo "  [fail]  stdout_contains: \"$expected\" (not in log)"
     fails=$((fails + 1))
   fi
-done < <(yq -r '.expect.stdout_contains // [] | .[]' "$SCENARIO")
+done < <(yq -r '.expect.stdout_contains // [] | .[]' "$SCENARIO" | expand_vars)
 
 echo ""
 if [ "$fails" -eq 0 ]; then

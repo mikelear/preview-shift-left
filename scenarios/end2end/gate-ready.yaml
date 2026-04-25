@@ -1,50 +1,67 @@
 # Scenario: end2end gate-check reports ready on first probe.
 #
 # Exercises the preview-gate branch of
-# leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml:
-# gate returns 200 immediately, task invokes end2end/run.sh, sees
+# leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml: gate returns
+# 200 immediately, task invokes the consumer's end2end/run.sh, sees a
 # valid results.json, exits PASS.
 #
-# Stage 3 MVP simplification: GIT_TOKEN is empty so the sticky-comment
-# post_sticky() code path skips the GitHub API call. No TLS-pinned
-# host stub needed. Covering sticky-comment logic belongs in a later
-# scenario once the harness grows a TLS-capable stub fixture.
+# Repo-agnostic — works against any consumer that ships an end2end/run.sh:
+#   make test SCENARIO=scenarios/end2end/gate-ready.yaml                    # default fixtures
+#   make test SCENARIO=scenarios/end2end/gate-ready.yaml REPO=../leartech-auth-ui
+#   make test SCENARIO=scenarios/end2end/gate-ready.yaml APP_NAME=foo PULL_NUMBER=99
+#
+# Runner expands ${VAR} from environment; REPO=<path> auto-derives
+# APP_NAME from basename. fixtures.from_repo pulls files from the
+# consumer's actual repo when REPO is set, otherwise falls back to inline.
+#
+# GIT_TOKEN is empty so the sticky-comment GitHub POST path skips —
+# covering it would require a TLS-capable api.github.com stub (open work).
 
 kind: task-test
 name: gate-ready
 task: ../../../leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml
 
 env:
-  APP_NAME: leartech-go-service-template
-  PULL_NUMBER: "42"
-  REPO_OWNER: mikelear
-  REPO_NAME: leartech-go-service-template
-  CLUSTER_ID: local
-  GIT_TOKEN: ""
-  DOMAIN: localtest.me
+  APP_NAME: ${APP_NAME}
+  PULL_NUMBER: ${PULL_NUMBER}
+  REPO_OWNER: ${REPO_OWNER}
+  REPO_NAME: ${REPO_NAME}
+  CLUSTER_ID: ${CLUSTER_ID}
+  GIT_TOKEN: ${GIT_TOKEN}
+  DOMAIN: ${DOMAIN}
 
 fixtures:
-  .jx/variables.sh: |
-    export APP_NAME=leartech-go-service-template
-    export PULL_NUMBER=42
-    export REPO_OWNER=mikelear
-    export REPO_NAME=leartech-go-service-template
-    export VERSION=0.0.0-PR-42-1-SNAPSHOT
-    export DOMAIN=localtest.me
-  end2end/run.sh: |
-    #!/usr/bin/env bash
-    # Minimal consumer script: always passes, emits valid results.json.
-    mkdir -p end2end
-    cat > end2end/results.json <<'JSON'
-    {
-      "success": true,
-      "summary": "1/1 checks passed",
-      "tests": [
-        { "name": "smoke", "status": "pass", "duration_ms": 42, "message": "ok" }
-      ],
-      "metadata": { "preview_url": "stub", "version": "0.0.0-PR-42-1-SNAPSHOT" }
-    }
-    JSON
+  # .jx/variables.sh would be produced by `jx gitops variables` on the
+  # cluster; locally we synthesise it from the same env vars the cluster
+  # would have populated.
+  .jx/variables.sh:
+    template: |
+      export APP_NAME=${APP_NAME}
+      export PULL_NUMBER=${PULL_NUMBER}
+      export REPO_OWNER=${REPO_OWNER}
+      export REPO_NAME=${REPO_NAME}
+      export VERSION=${VERSION}
+      export DOMAIN=${DOMAIN}
+
+  # When REPO is set, run the consumer's REAL end2end/run.sh — same
+  # script the cluster catalog task invokes. Otherwise inline a minimal
+  # always-passing fallback so the scenario remains runnable standalone
+  # (for first-run smoke-testing the harness itself).
+  end2end/run.sh:
+    from_repo: end2end/run.sh
+    fallback: |
+      #!/usr/bin/env bash
+      mkdir -p end2end
+      cat > end2end/results.json <<'JSON'
+      {
+        "success": true,
+        "summary": "1/1 checks passed",
+        "tests": [
+          { "name": "smoke", "status": "pass", "duration_ms": 42, "message": "ok" }
+        ],
+        "metadata": { "preview_url": "stub", "version": "${VERSION}" }
+      }
+      JSON
 
 stubs:
   - name: preview-gate
@@ -53,7 +70,7 @@ stubs:
       - method: GET
         path: /cgi-bin/gate
         status: 200
-        body: '{"ready":true,"deployments":["preview"],"version":"0.0.0-PR-42-1-SNAPSHOT"}'
+        body: '{"ready":true,"deployments":["preview"],"version":"${VERSION}"}'
 
 expect:
   taskrun_status: Succeeded
