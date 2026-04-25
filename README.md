@@ -30,23 +30,43 @@ Then `make doctor` tells you what's present, what's missing, and exact fix comma
 
 ## Quick start
 
+Assumes sibling checkouts under `~/leartech/`: `leartech-auth-ui`, `leartech-pipeline-catalog`, plus whatever consumer repos you want to target.
+
 ```bash
 git clone https://github.com/mikelear/preview-shift-left.git
 cd preview-shift-left
+
+# Setup
 make doctor                                   # verify runtime + tooling
 make up                                       # bootstrap kind + Tekton + ingress + local registry (~2 min cold)
 
-# Assumes you have sibling checkouts like ../leartech-auth-ui, ../leartech-pipeline-catalog
+# Tier 1 — render-only checks for a consumer repo (no cluster, ~3s)
 make render REPO=../leartech-auth-ui
-make playwright SCENARIO=scenarios/end2end-ui/auth-ui-smoke.yaml
-make test SCENARIO=scenarios/end2end/gate-ready.yaml
-make preview REPO=../leartech-auth-ui          # full OIDC stack (auth-ui + Hydra + auth-service + Mongo)
-make playwright SCENARIO=scenarios/end2end-ui/auth-ui-live.yaml
 
+# Tier 2 — Playwright specs against a mock UI (docker only, ~6s)
+make playwright SCENARIO=scenarios/end2end-ui/auth-ui-smoke.yaml
+
+# Tier 2 — catalog task tested locally (kind, ~30s warm).
+# One scenario, any consumer — pass REPO=<path> to use that repo's real
+# end2end/run.sh, or omit for the scenario's fallback fixture.
+make test SCENARIO=scenarios/end2end/gate-ready.yaml                          # default
+make test SCENARIO=scenarios/end2end/gate-ready.yaml REPO=../leartech-auth-ui # auth-ui
+make test SCENARIO=scenarios/end2end/gate-ready.yaml REPO=../leartech-go-service-template
+make test SCENARIO=scenarios/end2end/gate-ready.yaml APP_NAME=foo PULL_NUMBER=99   # ad-hoc env override
+
+# Tier 3 — full preview stack on kind (~2 min cold)
+make preview REPO=../leartech-auth-ui          # full OIDC stack (auth-ui + Hydra + auth-service + Mongo)
+make playwright SCENARIO=scenarios/end2end-ui/auth-ui-live.yaml  # specs against the live preview
+
+# Teardown
 make down                                     # delete the kind cluster (registry persists)
 make nuke                                     # full reset
 make clean-scenarios                          # delete stale scn-* namespaces from crashed scenarios
 ```
+
+**Editing the catalog task itself** (e.g. `~/leartech/leartech-pipeline-catalog/tasks/end2end/pullrequest.yaml`) and re-running `make test` picks up the change live — no rebuild, no PR. That's the iteration loop the harness exists for.
+
+**One scenario, N repos.** Adding a new consumer doesn't require a new scenario YAML. Pass `REPO=<path>`. The runner auto-derives `APP_NAME` from the basename, expands `${VAR}` placeholders in the scenario, and pulls `from_repo:` fixtures (e.g. `end2end/run.sh`) from the consumer's actual repo — same files the cluster pipeline uses.
 
 ## How scenarios work
 
