@@ -142,6 +142,9 @@ test: ## run one scenario. usage: make test SCENARIO=scenarios/<path>.yaml [REPO
 list: ## list scenario files
 	@find scenarios -type f -name '*.yaml' | sort
 
+survey: ## scan an org-wide repo dir for harness compat. usage: make survey [DIR=~/mqubeRepos]
+	bin/survey.sh $(DIR)
+
 clean-scenarios: ## delete scn-* namespaces left behind by crashed scenarios
 	@for ns in $$($(KUBECTL) get ns -o name 2>/dev/null | grep -oE 'scn-[a-z0-9-]+'); do \
 	  echo "deleting $$ns"; \
