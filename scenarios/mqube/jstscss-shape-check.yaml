@@ -1,0 +1,55 @@
+# Scenario: prove the harness is catalog-agnostic by pointing at an mqube
+# task. NOT a real test of the mqube task's logic — that's mqube's
+# concern. Just a demonstration that the framework can:
+#
+#   (a) Load a task file from a different catalog (~/mqubeRepos/mqube-
+#       pipeline-catalog instead of ~/leartech/leartech-pipeline-catalog)
+#   (b) Process the PipelineRun shape (mqube uses both kind:PipelineRun and
+#       kind:Task; this one is PipelineRun, matching our existing logic)
+#   (c) Execute against synthesised env/fixtures and reach a real failure
+#       point (in this case: missing package.json — expected for an empty
+#       fixture, NOT a framework problem)
+#
+# A future enhancement could deepen this with mqube's actual jstscss
+# fixture, but the proof-of-cross-org doesn't require it.
+
+kind: task-test
+name: mqube-jstscss-shape-check
+task: /Users/mikelear/mqubeRepos/mqube-pipeline-catalog/tasks/jx-pipeline-catalog-testing/jstscss-pullrequest.yaml
+
+env:
+  APP_NAME: ${APP_NAME}
+  PULL_NUMBER: ${PULL_NUMBER}
+  REPO_OWNER: spring-financial-group       # mqube convention
+  REPO_NAME: ${REPO_NAME}
+  CLUSTER_ID: ${CLUSTER_ID}
+  DOCKER_REGISTRY: localhost:5001
+  DOCKER_REGISTRY_ORG: spring-financial-group
+  PUSH_CONTAINER_REGISTRY: localhost:5001
+  VERSION: ${VERSION}
+
+fixtures:
+  package.json:
+    template: |
+      {
+        "name": "${APP_NAME}",
+        "version": "0.0.1",
+        "scripts": {
+          "test": "echo no tests defined && exit 0"
+        }
+      }
+
+# We expect the task to GET PAST our framework's processing (image pulls,
+# step execution starts) and then likely fail at npm-install or a
+# Dockerfile-not-found step. That's fine — what we're proving is the
+# framework loads the mqube task and executes against it.
+expect:
+  # "*" opts out of taskrun_status — the mqube task hits an arm64-vs-kaniko
+  # issue mid-run that we can't fix here. Only stdout assertions matter
+  # for proving the framework reached the mqube task's real steps.
+  taskrun_status: "*"
+  stdout_contains:
+    # If we see these, our scenario fixtures + env overrides reached the
+    # mqube task's npm-install step verbatim — full cross-catalog proof.
+    - "up to date, audited"
+    - "no tests defined"

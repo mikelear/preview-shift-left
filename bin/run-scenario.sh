@@ -271,8 +271,24 @@ if [ "$stub_count" -gt 0 ]; then
   fi
 fi
 
-# Extract the embedded taskSpec (catalog PipelineRuns have exactly one task).
-task_spec=$(yq -o=yaml '.spec.pipelineSpec.tasks[0].taskSpec' "$task_abs")
+# Extract the embedded taskSpec. Catalogs use two shapes:
+#   kind: PipelineRun  → taskSpec at .spec.pipelineSpec.tasks[0].taskSpec
+#                        (leartech catalog convention; 11 of mqube's tasks)
+#   kind: Task         → taskSpec at .spec
+#                        (62 of mqube's tasks)
+task_kind=$(yq -r '.kind' "$task_abs")
+case "$task_kind" in
+  PipelineRun)
+    task_spec=$(yq -o=yaml '.spec.pipelineSpec.tasks[0].taskSpec' "$task_abs")
+    ;;
+  Task)
+    task_spec=$(yq -o=yaml '.spec' "$task_abs")
+    ;;
+  *)
+    echo "error: unsupported task kind: $task_kind (expected PipelineRun or Task)"
+    exit 1
+    ;;
+esac
 
 tr_name="scenario-$(openssl rand -hex 3)"
 
@@ -371,10 +387,21 @@ echo "[taskrun]  status=$status reason=$reason"
 
 want_status=$(yq -r '.expect.taskrun_status // "Succeeded"' "$SCENARIO")
 expected_status="True"
+
+# `taskrun_status: "*"` opts out of status checking — useful for cross-org
+# / cross-arch demo scenarios where the task is expected to hang or
+# fail at a step we can't fix locally (e.g. kaniko amd64-only build on
+# arm64 host). Only stdout_contains assertions matter; `tkn` will be
+# killed after the stdout assertions pass to avoid waiting for timeout.
+if [ "$want_status" = "*" ]; then
+  echo "[assert]  taskrun_status: skipped (scenario opts out via '*')"
+fi
 [ "$want_status" = "Failed" ] && expected_status="False"
 
 fails=0
-if [ "$status" = "$expected_status" ]; then
+if [ "$want_status" = "*" ]; then
+  :  # skipped
+elif [ "$status" = "$expected_status" ]; then
   echo "  [pass]  taskrun_status=$want_status"
 else
   echo "  [fail]  taskrun_status=$want_status (got $status/$reason)"
