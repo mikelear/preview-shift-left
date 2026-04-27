@@ -23,6 +23,11 @@ CLUSTER="${CLUSTER:-preview-shift-left}"
 CONTEXT="kind-${CLUSTER}"
 MOUNTEBANK_IMAGE="${MOUNTEBANK_IMAGE:-bbyars/mountebank:2.9.1}"
 K="kubectl --context ${CONTEXT}"
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+
+# shellcheck source=bin/preflight.sh
+. "$HERE/bin/preflight.sh"
+preflight
 
 # ---- scenario parameterisation ---------------------------------------
 # Auto-derive APP_NAME / REPO_NAME from REPO=<path> if provided. Lets one

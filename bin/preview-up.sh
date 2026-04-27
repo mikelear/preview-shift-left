@@ -42,6 +42,10 @@ HERE=$(cd "$(dirname "$0")/.." && pwd)
 K="kubectl --context ${CONTEXT}"
 export K CONTEXT CLUSTER PULL_NUMBER REPO_OWNER DOMAIN HERE REPO CHART_NAME
 
+# shellcheck source=bin/preflight.sh
+. "$HERE/bin/preflight.sh"
+preflight
+
 app_name=$(basename "$REPO")
 ns="jx-${REPO_OWNER}-${app_name}-pr-${PULL_NUMBER}"
 host="${app_name}-pr${PULL_NUMBER}.${DOMAIN}"
