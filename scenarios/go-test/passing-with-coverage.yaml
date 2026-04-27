@@ -1,0 +1,49 @@
+# Scenario: go-test catalog task on a tiny module that passes coverage.
+#
+# Proves the task: (1) runs `go test -race -coverprofile`, (2) computes
+# total coverage via `go tool cover -func`, (3) compares against the
+# COVERAGE_THRESHOLD env var, (4) exits 0 when above threshold.
+#
+# Threshold is set low (10%) since this fixture's coverage is whatever
+# a single trivial test of a single function gives — we're testing the
+# task logic, not the consumer's coverage discipline.
+
+kind: task-test
+name: go-test-passing
+task: ../../../leartech-pipeline-catalog/tasks/go-test/pullrequest.yaml
+
+env:
+  APP_NAME: go-test-scenario
+  PULL_NUMBER: "1"
+  REPO_OWNER: mikelear
+  REPO_NAME: go-test-scenario
+  CLUSTER_ID: local
+  COVERAGE_THRESHOLD: "10.0"
+  COVERAGE_SCOPE: "./internal/..."
+
+fixtures:
+  go.mod: |
+    module local/go-test-scenario
+
+    go 1.25
+  internal/sum/sum.go: |
+    package sum
+
+    func Add(a, b int) int { return a + b }
+  internal/sum/sum_test.go: |
+    package sum
+
+    import "testing"
+
+    func TestAdd(t *testing.T) {
+      if Add(2, 3) != 5 {
+        t.Fatal("expected 5")
+      }
+    }
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "go test -race -coverprofile"
+    - "PASS"
+    - "coverage summary"

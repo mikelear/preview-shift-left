@@ -1,0 +1,44 @@
+# Scenario: go-lint catalog task on a minimal clean Go module.
+#
+# Companion to swag-generated-docs.yaml (which locks in one specific
+# bug fix). This one is the general "happy path" — a trivial module
+# with no problems should lint clean. Catches accidental tightening of
+# the catalog's golangci.base.yml or image-pin regressions.
+
+kind: task-test
+name: go-lint-clean-module
+task: ../../../leartech-pipeline-catalog/tasks/go-lint/pullrequest.yaml
+
+env:
+  APP_NAME: go-lint-clean
+  PULL_NUMBER: "1"
+  REPO_OWNER: mikelear
+  REPO_NAME: go-lint-clean
+  CLUSTER_ID: local
+
+fixtures:
+  go.mod: |
+    module local/go-lint-clean
+
+    go 1.25
+  main.go: |
+    // Package main is a trivial entrypoint used by the harness scenario.
+    package main
+
+    func main() {}
+  # Per-repo override file — required for golangci-lint v2 to merge with
+  # the catalog's base config (catalog merges base ← local; without a
+  # local file the merged config has empty version and golangci errors
+  # with "unsupported version of the configuration").
+  .golangci.yml: |
+    version: "2"
+    formatters:
+      settings:
+        goimports:
+          local-prefixes: local/go-lint-clean
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "==> golangci-lint run -v"
+    - "==> lint complete"

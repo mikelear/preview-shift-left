@@ -1,0 +1,35 @@
+# Scenario: npm-audit catalog task on a minimal clean package.json.
+#
+# Proves the task: (1) handles a repo with no committed lockfile by
+# generating one via `npm install --package-lock-only` and (2) passes
+# audit at the default critical level for a no-deps fixture.
+#
+# Future regressions: if the catalog bumps node images or changes the
+# audit-level default, this scenario fails locally in seconds.
+
+kind: task-test
+name: npm-audit-clean
+task: ../../../leartech-pipeline-catalog/tasks/npm-audit/pullrequest.yaml
+
+env:
+  APP_NAME: npm-audit-scenario
+  PULL_NUMBER: "1"
+  REPO_OWNER: mikelear
+  REPO_NAME: npm-audit-scenario
+  CLUSTER_ID: local
+
+fixtures:
+  package.json: |
+    {
+      "name": "npm-audit-scenario",
+      "version": "0.0.1",
+      "private": true,
+      "dependencies": {}
+    }
+
+expect:
+  taskrun_status: Succeeded
+  stdout_contains:
+    - "no package-lock.json found; generating one"
+    - "npm audit --audit-level=critical"
+    - "found 0 vulnerabilities"
