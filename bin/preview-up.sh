@@ -84,6 +84,15 @@ echo "[proto]  $proto"
 # their real Dockerfile (which must build on the local arch).
 
 img="localhost:5001/$app_name:local"
+
+# Build override hook for substitutions whose real Dockerfile can't run as-is
+# (e.g. private base image with a commented "use this locally" alternative).
+# psl_build() must produce an image tagged exactly $img — preview-up.sh will
+# tag/push/kind-load it like any other.
+if type -t psl_build >/dev/null; then
+  echo "[build]  psl_build hook (substitutions-provided)"
+  psl_build "$img"
+else
 build_dir=$(mktemp -d)
 if [ -d "$REPO/dist" ] && [ -f "$REPO/nginx/default.conf" ]; then
   echo "[build]  thin nginx image from $REPO/dist/"
@@ -109,6 +118,7 @@ else
   exit 1
 fi
 (cd "$build_dir" && docker build -t "$img" . 2>&1 | tail -2)
+fi  # end of else branch for psl_build hook
 # Also tag as the image name the consumer helmfile's chart default expects.
 docker tag "$img" "localhost:5001/${REPO_OWNER}/${app_name}:local-0.0.0" 2>/dev/null || true
 docker push "localhost:5001/${REPO_OWNER}/${app_name}:local-0.0.0" >/dev/null 2>&1 || true

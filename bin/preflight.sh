@@ -18,20 +18,23 @@ preflight() {
   local warn=0
   local line="[preflight]"
 
-  # Colima disk (skip silently if user isn't on colima)
-  if command -v colima >/dev/null 2>&1 && colima status >/dev/null 2>&1; then
+  # The constraint is the docker DATA disk (vdb1 = /var/lib/docker = 100G
+  # by default on Colima), NOT the Colima system disk (vda1 = / = 19G).
+  # Check from inside the kind node — that's exactly the surface that
+  # `docker build` + `kind load` will hit.
+  if docker exec "${cluster}-control-plane" true 2>/dev/null; then
     local df_out size_kb free_kb free_h size_h
-    df_out=$(colima ssh -- df -k / 2>/dev/null | awk 'NR==2 {print $2, $4}')
+    df_out=$(docker exec "${cluster}-control-plane" df -k /var 2>/dev/null | awk 'NR==2 {print $2, $4}')
     if [ -n "$df_out" ]; then
       size_kb=${df_out% *}
       free_kb=${df_out#* }
       free_h=$(awk -v k="$free_kb" 'BEGIN{printf "%.0fG", k/1024/1024}')
       size_h=$(awk -v k="$size_kb" 'BEGIN{printf "%.0fG", k/1024/1024}')
-      if [ "$free_kb" -lt 3145728 ]; then
+      if [ "$free_kb" -lt 5242880 ]; then  # < 5G
         warn=1
-        line="$line  colima: ⚠ ${free_h}/${size_h} free (LOW)"
+        line="$line  docker-data: ⚠ ${free_h}/${size_h} free (LOW)"
       else
-        line="$line  colima: ${free_h}/${size_h} free"
+        line="$line  docker-data: ${free_h}/${size_h} free"
       fi
     fi
   fi
@@ -54,7 +57,9 @@ preflight() {
   echo "$line"
 
   if [ "$warn" = "1" ]; then
-    echo "[preflight] recovery: docker exec ${cluster}-control-plane crictl rmi --prune"
-    echo "[preflight]           colima stop && colima start --disk 60   (resizes VM)"
+    echo "[preflight] recovery (most → least targeted):"
+    echo "[preflight]   docker exec ${cluster}-control-plane crictl rmi --prune    # in-cluster cache"
+    echo "[preflight]   docker image prune -af                                      # host docker (unused)"
+    echo "[preflight]   docker system prune -af --volumes                           # host docker (everything unused)"
   fi
 }

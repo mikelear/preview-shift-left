@@ -151,14 +151,24 @@ if [ -f "$HELMFILE" ]; then
     fi
   done
 
+  # Map repo alias → URL, so chart "jx3/jx-verify" can be resolved against
+  # the repositories[] table to know if the underlying registry is public.
+  REPO_URLS=$(echo "$HF_JSON" | jq -c '[.[] | select(.repositories) | .repositories[]?] | map({(.name): .url}) | add // {}')
+
   while IFS=$'\t' read -r name chart; do
     [ -z "$name" ] && continue
     if [[ "$chart" == ../* || "$chart" == ./* ]]; then
       echo "  ✓ release: $name → $chart   (local chart)"
       LOCAL_RELEASE="$name"
     else
-      echo "  ✗ release: $name → $chart   (private dep — would 401)"
-      PRIVATE_RELEASES+=("$name")
+      repo_alias="${chart%%/*}"
+      repo_url=$(echo "$REPO_URLS" | jq -r --arg n "$repo_alias" '.[$n] // ""')
+      if [ -n "$repo_url" ] && (is_public_helm_repo "$repo_url" || [[ "$repo_url" == "localhost:"* ]]); then
+        echo "  ✓ release: $name → $chart   (public: $repo_url)"
+      else
+        echo "  ✗ release: $name → $chart   (private dep — would 401)"
+        PRIVATE_RELEASES+=("$name")
+      fi
     fi
   done < <(echo "$HF_JSON" | jq -r '.[] | select(.releases) | .releases[] | [.name, .chart] | @tsv')
 
