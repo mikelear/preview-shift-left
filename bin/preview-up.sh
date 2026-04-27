@@ -22,6 +22,12 @@
 #   DOMAIN      (default localtest.me)
 #   WITH_TLS=1                  — force HTTPS ingress even without substitutions
 #                                (substitutions can also set PSL_PROTO=https)
+#   WITH_MONGO=1                — start a mongo:7 Deployment + 'mongodb' Service
+#                                in the namespace (consumer secrets point to it)
+#   WITH_REDIS=1                — start a redis:7-alpine + 'redis' Service
+#                                in the namespace (note: not sentinel-mode —
+#                                apps that only support redis-sentinel need
+#                                their config patched separately)
 
 set -euo pipefail
 
@@ -141,6 +147,78 @@ if [ "$proto" = "https" ]; then
   $K -n "$ns" create secret tls wildcard-localtest \
     --cert="$cert_dir/tls.crt" --key="$cert_dir/tls.key" \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
+fi
+
+# ---- common backing services (opt-in via flags) ----------------------
+# Many consumer charts assume mongo / redis exist somewhere addressable.
+# Real preview clusters get these from a shared infrastructure chart;
+# locally we provision plain single-pod versions in the consumer's
+# namespace so substitutions just point connection strings at `mongodb`
+# and `redis` Services.
+
+if [ "${WITH_MONGO:-0}" = "1" ]; then
+  echo "[mongo]  installing mongo:7 in $ns"
+  $K -n "$ns" apply -f - <<'EOF' >/dev/null
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: mongodb}
+  template:
+    metadata:
+      labels: {app: mongodb}
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:7
+        ports: [{containerPort: 27017}]
+        volumeMounts:
+        - {name: data, mountPath: /data/db}
+      volumes:
+      - name: data
+        emptyDir: {sizeLimit: 1Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+spec:
+  selector: {app: mongodb}
+  ports: [{port: 27017, targetPort: 27017}]
+EOF
+fi
+
+if [ "${WITH_REDIS:-0}" = "1" ]; then
+  echo "[redis]  installing redis:7-alpine in $ns"
+  $K -n "$ns" apply -f - <<'EOF' >/dev/null
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redis}
+  template:
+    metadata:
+      labels: {app: redis}
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports: [{containerPort: 6379}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector: {app: redis}
+  ports: [{port: 6379, targetPort: 6379}]
+EOF
 fi
 
 # ---- pre-apply hook (from substitutions) -----------------------------

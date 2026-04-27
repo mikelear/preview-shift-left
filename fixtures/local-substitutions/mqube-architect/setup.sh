@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tier 3 substitutions for mqube-architect.
 #
-# Two adjustments needed for local Tier 3:
+# Three adjustments needed for local Tier 3:
 #
 # 1. Dockerfile FROM is jx3mqubebuild.azurecr.io/docker-io/library/alpine:3.21
 #    (private mirror — needs az acr login). The Dockerfile literally has a
@@ -12,9 +12,21 @@
 #
 # 2. Two Secrets the chart references but doesn't define (provided by the
 #    skipped `dev/preview-infrastructure` chart in real previews):
-#    `architect` (14 keys: Azure/MongoDB/GitHub/Slack creds) and `redis`
-#    (connection-string). Stub values let the pod start; runtime calls to
-#    those services will fail but that's expected for a local preview.
+#    `architect` (15 keys: Azure/MongoDB/GitHub/Slack creds + the GitHub-
+#    App private key Secret-volume mount) and `redis` (connection-string).
+#
+# 3. Backing services: WITH_MONGO + WITH_REDIS run a single-pod mongo:7
+#    and redis:7-alpine in the namespace. Secret values point at those
+#    Service hostnames so the app can actually connect. NOTE: the chart's
+#    default `config.redis.masterName: mymaster` switches the app's redis
+#    client into sentinel mode; our plain redis pod doesn't speak sentinel.
+#    The app gets past redis init only if you also override the chart's
+#    config to remove masterName — out of scope for the harness, doable
+#    in a `psl_post` patch on the rendered ConfigMap if you want to chase it.
+
+# Opt into common backing services.
+export WITH_MONGO=1
+export WITH_REDIS=1
 
 PSL_SELECTOR="name=preview"
 
@@ -56,13 +68,14 @@ psl_pre() {
     --from-literal=git-user-name=stub \
     --from-literal=git-user-token=stub \
     --from-literal=github-webhook-secret=stub \
-    --from-literal=mongodb-connection-string=stub \
+    --from-literal=gh-app-private-key=stub \
+    --from-literal=mongodb-connection-string='mongodb://mongodb:27017/architect' \
     --from-literal=mongodb-org-id=stub \
     --from-literal=mongodb-private-key=stub \
     --from-literal=mongodb-public-key=stub \
     --from-literal=slack-API-token=stub \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
   $K -n "$ns" create secret generic redis \
-    --from-literal=connection-string=stub \
+    --from-literal=connection-string=redis:6379 \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
 }

@@ -123,6 +123,17 @@ if [ -f "$REPO/Dockerfile" ]; then
   if grep -qE 'GIT_TOKEN|NPM_TOKEN|NUGET_PASSWORD|--mount=type=secret' "$REPO/Dockerfile"; then
     echo "  ⚠ build-time secrets referenced (GIT_TOKEN / NPM_TOKEN / mount=secret)"
   fi
+  # .NET on alpine has a known native-lib hazard on arm64 (Apple Silicon
+  # Colima): NuGet packages like MongoDB.Driver ship libmongocrypt.so as
+  # linux-x64 (glibc) with no linux-musl-arm64 variant. .NET resolves to
+  # the wrong native lib and the runtime crashes loading it. Build
+  # succeeds; pod CrashLoopBackOff with `__fprintf_chk: symbol not found`.
+  if grep -qE 'mcr\.microsoft\.com/dotnet/.*-alpine' "$REPO/Dockerfile"; then
+    echo "  ⚠ .NET + alpine on arm64 may fail at runtime if app uses MongoDB.Driver,"
+    echo "    SQLite, or other native-lib NuGet deps (musl-vs-glibc symbol mismatch)."
+    echo "    Either switch the runtime base to ...:8.0 (Debian, glibc) for local,"
+    echo "    or rebuild via 'docker buildx --platform linux/amd64' (slower)."
+  fi
 else
   echo "  (no Dockerfile)"
 fi
@@ -220,9 +231,18 @@ MISSING_SECRETS=$(comm -23 <(echo "$REFERENCED_SECRETS") <(echo "$DEFINED_SECRET
 MISSING_CMS=$(comm -23 <(echo "$REFERENCED_CMS") <(echo "$DEFINED_CMS"))
 
 secret_keys() {
-  echo "$DOCS_JSON" | jq -r --arg n "$1" '
+  local kr_keys vol_keys
+  # secretKeyRef-style env mappings.
+  kr_keys=$(echo "$DOCS_JSON" | jq -r --arg n "$1" '
     .. | objects | select(.secretKeyRef?.name == $n) | .secretKeyRef.key
-  ' | grep -v '^null$' | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
+  ' | grep -v '^null$' | grep -v '^$')
+  # Volume mount items[] requiring specific keys (the `gh-app-private-key`
+  # case mqube-architect chart has — Secret used as a volume with an items
+  # selector pulling out one specific key into a file).
+  vol_keys=$(echo "$DOCS_JSON" | jq -r --arg n "$1" '
+    .. | objects | select(.secret?.secretName == $n) | .secret.items?[]?.key
+  ' | grep -v '^null$' | grep -v '^$')
+  printf '%s\n%s\n' "$kr_keys" "$vol_keys" | grep -v '^$' | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
 cm_keys() {

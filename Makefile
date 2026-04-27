@@ -122,10 +122,10 @@ playwright: ## run Playwright specs against a mock UI. usage: make playwright SC
 	@test -n "$(SCENARIO)" || { echo "usage: make playwright SCENARIO=scenarios/end2end-ui/<name>.yaml"; exit 2; }
 	bin/run-playwright.sh $(SCENARIO)
 
-preview: ## tier 3 — apply consumer preview helmfile. usage: make preview REPO=../leartech-auth-ui [WITH_TLS=1]
-	@test -n "$(REPO)" || { echo "usage: make preview REPO=<path-to-consumer-repo> [WITH_TLS=1]"; exit 2; }
+preview: ## tier 3 — apply consumer preview helmfile. usage: make preview REPO=../leartech-auth-ui [WITH_TLS=1] [WITH_MONGO=1] [WITH_REDIS=1]
+	@test -n "$(REPO)" || { echo "usage: make preview REPO=<path-to-consumer-repo> [WITH_TLS=1] [WITH_MONGO=1] [WITH_REDIS=1]"; exit 2; }
 	@$(MAKE) -s up
-	WITH_TLS=$(WITH_TLS) bin/preview-up.sh $(REPO)
+	WITH_TLS=$(WITH_TLS) WITH_MONGO=$(WITH_MONGO) WITH_REDIS=$(WITH_REDIS) REPO_OWNER=$(REPO_OWNER) bin/preview-up.sh $(REPO)
 
 preview-down: ## tear down a preview namespace. usage: make preview-down REPO=../leartech-auth-ui
 	@test -n "$(REPO)" || { echo "usage: make preview-down REPO=<path-to-consumer-repo>"; exit 2; }
