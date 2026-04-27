@@ -76,6 +76,42 @@ psl_pre() {
     --from-literal=slack-API-token=stub \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
   $K -n "$ns" create secret generic redis \
-    --from-literal=connection-string=redis:6379 \
+    --from-literal=connection-string='' \
     --dry-run=client -o yaml | $K apply -f - >/dev/null
+}
+
+# psl_post runs AFTER helmfile sync (which times out at wait:true because the
+# pod CrashLoops on chart-config issues). Patches the deployed ConfigMap to:
+#   - Switch redis to standard (non-sentinel) mode by adding url+port and
+#     leaving REDIS_SENTINELS empty (the wrapper picks standard if env empty).
+#   - Disable github integration (chart hardcodes enabled:true which forces
+#     parsing gh-app-private-key as a real PEM; our stub isn't valid).
+#
+# Three findings worth shifting left into the chart itself:
+#   - Chart should expose a knob to disable redis-sentinel mode.
+#   - Chart's redis section should default url/port (or read them from a
+#     redis Service in the namespace).
+#   - github.enabled should be false-by-default OR chart should validate
+#     the gh-app-private-key Secret before requiring it.
+psl_post() {
+  local ns="$1"
+
+  echo "[psl_post] patching ConfigMap mqube-architect-config (redis standard mode + github off)"
+  local cm
+  cm=$($K -n "$ns" get cm mqube-architect-config -o jsonpath='{.data.config\.yaml}' 2>/dev/null) || return 0
+  cm=$(echo "$cm" | awk '
+    /^redis:$/ { print "redis:"; print "  url: redis"; print "  port: 6379"; print "  db: 0"; print "  poolSize: 25"; in_redis=1; next }
+    in_redis && /^[a-zA-Z]/ { in_redis=0 }
+    in_redis { next }
+    /^github:$/ { in_gh=1; print; next }
+    in_gh && /^  enabled:/ { print "  enabled: false"; next }
+    in_gh && /^[a-zA-Z]/ { in_gh=0 }
+    { print }
+  ')
+  $K -n "$ns" create cm mqube-architect-config --from-literal=config.yaml="$cm" \
+    --dry-run=client -o yaml | $K apply -f - >/dev/null
+
+  echo "[psl_post] rolling architect to pick up new config..."
+  $K -n "$ns" rollout restart deploy preview-mqube-architect >/dev/null 2>&1 || true
+  $K -n "$ns" rollout status deploy preview-mqube-architect --timeout 60s 2>&1 | tail -3
 }

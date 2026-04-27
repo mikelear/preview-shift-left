@@ -256,7 +256,8 @@ if [ -f "$REPO/preview/helmfile.yaml.gotmpl" ]; then
       DOCKER_REGISTRY="localhost:5001" \
       DOCKER_REGISTRY_ORG="$REPO_OWNER" \
       CLUSTER_ID="local" \
-      helmfile --kube-context "$CONTEXT" --file helmfile.yaml.gotmpl $selector_arg sync 2>&1 | tail -15)
+      helmfile --kube-context "$CONTEXT" --file helmfile.yaml.gotmpl $selector_arg sync 2>&1 | tail -15) \
+    || echo "[helmfile] sync exited non-zero (often: chart's wait:true timed out on a pod that needs psl_post recovery — continuing)"
 else
   # Fallback: consumer has no preview/helmfile — just install their chart.
   echo "[helm]   no preview/helmfile; installing charts/$CHART_NAME directly"
