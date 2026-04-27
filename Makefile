@@ -51,7 +51,7 @@ CATALOG_DIR   ?= $(abspath ../leartech-pipeline-catalog)
 
 export CLUSTER CONTEXT CATALOG_DIR MOUNTEBANK_IMAGE CONTAINER_TOOL
 
-.PHONY: help doctor preflight up down nuke ensure-cluster ensure-registry ensure-tekton ensure-ingress test list
+.PHONY: help doctor preflight up down nuke ensure-cluster ensure-registry ensure-tekton ensure-ingress test list analyze survey
 
 help:
 	@awk 'BEGIN{FS=":.*?## "}/^[a-zA-Z0-9_-]+:.*## /{printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -144,6 +144,9 @@ list: ## list scenario files
 
 survey: ## scan an org-wide repo dir for harness compat. usage: make survey [DIR=~/mqubeRepos]
 	bin/survey.sh $(DIR)
+
+analyze: ## predict tier-3 blockers for a repo + draft a substitutions file. usage: make analyze REPO=<path>
+	bin/analyze-repo.sh $(REPO) $(if $(SKELETON),--skeleton,)
 
 clean-scenarios: ## delete scn-* namespaces left behind by crashed scenarios
 	@for ns in $$($(KUBECTL) get ns -o name 2>/dev/null | grep -oE 'scn-[a-z0-9-]+'); do \
