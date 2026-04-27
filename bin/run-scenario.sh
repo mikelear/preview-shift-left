@@ -120,7 +120,10 @@ if [ "$fixtures_json" != "{}" ]; then
       fi
     fi
 
-    printf '%s' "$content" >"$tmp/$key"
+    # printf '%s\n' (not '%s') — bash $(...) strips trailing newlines
+    # from $content, but most files (Go in particular) must end with one
+    # or downstream tooling (gofmt, shell parsers) chokes.
+    printf '%s\n' "$content" >"$tmp/$key"
     # Mark likely scripts executable so the task's `bash end2end/run.sh`
     # (or `[ -x end2end/run.sh ]` checks) still work after untar.
     case "$key" in
