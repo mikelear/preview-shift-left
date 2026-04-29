@@ -1,0 +1,48 @@
+# Scenario: Playwright specs against the LIVE webcoder-ui preview deployed
+# by `make preview REPO=../webcoder-ui`.
+#
+# Phase A coverage today (UI only, no auth stack):
+#   01-page-loads          ✓ Bare app shell + AuthGuard redirect
+#   02-unauth-redirects    ✓ Unauthenticated user → Hydra
+#   03-login-flow          ✗ needs full auth stack (Phase B)
+#   04-pr-cards-render     ✗ needs login + webcoder-service backend
+#   05-sign-out            ✗ needs login
+#
+# Phase B (full stack) is documented in
+# `fixtures/local-substitutions/webcoder-ui/setup.sh` once written —
+# mirrors leartech-auth-ui's substitution pattern but for the bundled
+# auth-service + auth-ui + Postgres.
+#
+# Use this scenario today to:
+#   - iterate the page-load specs locally (~12s vs ~15min PR round-trip)
+#   - confirm `make preview` brings up webcoder-ui correctly
+#   - prove the Tier-3 loop works for this repo before the full auth stack
+#     substitution lands
+
+kind: playwright-run
+name: webcoder-ui-live
+repo: ../../../webcoder-ui
+
+# HTTPS via self-signed wildcard cert (fixtures/tls/) — Angular OIDC's PKCE
+# requires a secure context for crypto.subtle.digest. localhost works,
+# *.localtest.me requires the wildcard.
+base_url: https://webcoder-ui-pr42.localtest.me:8443
+ignore_https_errors: true
+
+# Chromium's `ignoreHTTPSErrors` covers navigation but NOT all in-page
+# fetch() calls (cross-origin to a self-signed host). Force the launch
+# arg so the OIDC discovery fetch + the AuthGuard's downstream calls
+# don't TypeError "Failed to fetch" against our wildcard *.localtest.me cert.
+chromium_args:
+  - "--ignore-certificate-errors"
+
+# Force serial — once Phase B lands, Hydra's session state will race
+# under parallel workers (same gotcha as auth-ui's tier-3 scenario).
+workers: 1
+
+# Phase A: the two specs that don't depend on a working Hydra.
+# 02-unauth-redirects asserts the AuthGuard kicks the user toward Hydra
+# discovery — even when Hydra is unreachable, the redirect itself fires.
+only:
+  - 01-page-loads.spec.ts
+  - 02-unauth-redirects.spec.ts
