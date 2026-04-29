@@ -333,6 +333,7 @@ PSL_SELECTOR=\"name=$LOCAL_RELEASE\"
 "
 fi
 
+# shellcheck disable=SC2016  # literal template — $1 is meant to expand at runtime in the generated file, not here.
 skeleton+='
 psl_pre() {
   local ns="$1"
@@ -372,6 +373,7 @@ while IFS= read -r c; do
 done <<<"$MISSING_CMS"
 
 if [ "${#PRIVATE_IMAGES[@]}" -gt 0 ]; then
+  # shellcheck disable=SC2016  # literal template — backticks are deliberate prose in the generated file.
   skeleton+='
   # Private images detected — patch the deployment to use a public stub OR
   # mirror to localhost:5001 (`az acr login && regctl image copy ...`):
