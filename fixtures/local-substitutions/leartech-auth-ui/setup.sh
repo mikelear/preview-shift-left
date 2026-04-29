@@ -139,8 +139,6 @@ psl_post() {
     --set externalSecrets.azure.enabled=false \
     --set hydra.hydra.dev=true \
     --set hydra.hydra.config.dsn=memory \
-    --set 'hydra.hydra.config.secrets.system[0]=local-dev-system-secret-32chars-ok' \
-    --set 'hydra.hydra.config.secrets.cookie[0]=local-dev-cookie-secret-32chars-ok' \
     --set hydra.hydra.config.strategies.access_token=jwt \
     --set "hydra.hydra.config.urls.self.issuer=${hydra_url}" \
     --set "hydra.hydra.config.urls.self.public=${hydra_url}" \
