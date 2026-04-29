@@ -64,7 +64,10 @@ render_docs() {
     [ -d "$REPO/charts" ] && ln -s "$REPO/charts" "$tmp/charts"
     cp "$HERE/fixtures/preview-helmfile/jx-values-local.yaml" "$tmp/preview/jx-values.yaml" 2>/dev/null || true
 
-    rendered=$(cd "$tmp/preview" && \
+    # `env` prefix: shellcheck flags inline VAR=val chains as assignments
+    # only visible to the forked process (SC2097/SC2098). `env` makes the
+    # intent explicit — these are command-scope env vars for helmfile.
+    rendered=$(cd "$tmp/preview" && env \
       APP_NAME="$APP_NAME" \
       PULL_NUMBER="42" \
       REPO_OWNER="${REPO_OWNER:-spring-financial-group}" \

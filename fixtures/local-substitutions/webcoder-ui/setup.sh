@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Local substitutions for webcoder-ui — Tier 3 full auth stack on kind.
 #
 # Mirrors leartech-auth-ui's substitution pattern, extended for the
@@ -295,8 +296,8 @@ JSON
     --set "config.api=${bff_url}" \
     --set "config.auth.authority=${hydra_url}" \
     --set "config.auth.clientId=${client_id}" >/dev/null
-  $K -n "$ns" rollout restart deploy/preview-${CHART_NAME} >/dev/null
-  $K -n "$ns" rollout status deploy/preview-${CHART_NAME} --timeout=60s >/dev/null
+  $K -n "$ns" rollout restart "deploy/preview-${CHART_NAME}" >/dev/null
+  $K -n "$ns" rollout status "deploy/preview-${CHART_NAME}" --timeout=60s >/dev/null
 
   # ---- Run end2end seed scripts (register OAuth + seed test user) ---
   local end2end_dir="$REPO/end2end"

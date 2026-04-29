@@ -28,6 +28,7 @@
 export WITH_MONGO=1
 export WITH_REDIS=1
 
+# shellcheck disable=SC2034  # PSL_SELECTOR is read by preview-up.sh after sourcing.
 PSL_SELECTOR="name=preview"
 
 psl_build() {

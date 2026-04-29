@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Local substitutions for leartech-auth-ui — an EXCEPTION, not the template.
 #
 # Most consumer repos' preview/helmfile.yaml.gotmpl will run verbatim against
@@ -173,8 +174,8 @@ JSON
     --set "config.api=${as_url}" \
     --set "config.auth.authority=${hydra_url}" \
     --set "config.auth.clientId=${client_id}" >/dev/null
-  $K -n "$ns" rollout restart deploy/preview-${CHART_NAME} >/dev/null
-  $K -n "$ns" rollout status deploy/preview-${CHART_NAME} --timeout=60s >/dev/null
+  $K -n "$ns" rollout restart "deploy/preview-${CHART_NAME}" >/dev/null
+  $K -n "$ns" rollout status "deploy/preview-${CHART_NAME}" --timeout=60s >/dev/null
 
   # ---- Run auth-ui's end2end/01 + 02 seed scripts --------------------
   # Same scripts the cluster catalog task runs. 01 registers the OAuth

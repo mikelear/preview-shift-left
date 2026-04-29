@@ -3,6 +3,7 @@
 # Review every line; the analyzer is best-effort, not authoritative.
 
 # Skip private OCI chart dep(s); sync only the consumer's own release.
+# shellcheck disable=SC2034  # PSL_SELECTOR is read by preview-up.sh after sourcing.
 PSL_SELECTOR="name=preview"
 
 psl_pre() {

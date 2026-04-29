@@ -145,11 +145,17 @@ if [ -n "$only_specs" ]; then
   for s in $only_specs; do
     spec_paths="$spec_paths $specs_rel/$s"
   done
+  # $workers_arg + $spec_paths intentionally unquoted: $workers_arg is
+  # either empty or `--workers=N` (single token; quoting would pass an
+  # empty arg when missing); $spec_paths is a space-separated list of
+  # paths that needs word-splitting into separate `playwright test` args.
+  # shellcheck disable=SC2086
   PREVIEW_URL="$PREVIEW_URL_VAL" \
     npx playwright test \
     --config "$config_arg" $workers_arg \
     $spec_paths 2>&1 | tee "$log"
 else
+  # shellcheck disable=SC2086  # see comment above re: $workers_arg
   PREVIEW_URL="$PREVIEW_URL_VAL" \
     npx playwright test \
     --config "$config_arg" $workers_arg \
