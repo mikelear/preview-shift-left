@@ -16,6 +16,7 @@
 #    runtime but that's a runtime concern, not a deploy concern.
 
 # Skip the private OCI chart dep — sync only the consumer's own chart.
+# shellcheck disable=SC2034  # PSL_SELECTOR is read by preview-up.sh after sourcing.
 PSL_SELECTOR="name=preview"
 
 psl_pre() {

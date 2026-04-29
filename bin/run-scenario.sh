@@ -408,7 +408,7 @@ fi
 
 fails=0
 if [ "$want_status" = "*" ]; then
-  :  # skipped
+  : # skipped
 elif [ "$status" = "$expected_status" ]; then
   echo "  [pass]  taskrun_status=$want_status"
 else

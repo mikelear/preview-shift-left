@@ -3,6 +3,7 @@
 # Review every line; the analyzer is best-effort, not authoritative.
 
 # Skip private OCI chart dep(s); sync only the consumer's own release.
+# shellcheck disable=SC2034  # PSL_SELECTOR is read by preview-up.sh after sourcing.
 PSL_SELECTOR="name=preview"
 
 psl_pre() {
@@ -17,4 +18,3 @@ psl_pre() {
   $K -n "$ns" create secret generic redis --from-literal=redis.txt=stub --dry-run=client -o yaml | $K apply -f - >/dev/null
   $K -n "$ns" create secret generic rmq-rabbitmq-ha --from-literal=rabbitmq-hostname=stub --from-literal=rabbitmq-password=stub --from-literal=rabbitmq-username=stub --dry-run=client -o yaml | $K apply -f - >/dev/null
 }
-

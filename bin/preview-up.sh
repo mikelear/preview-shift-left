@@ -99,12 +99,12 @@ if type -t psl_build >/dev/null; then
   echo "[build]  psl_build hook (substitutions-provided)"
   psl_build "$img"
 else
-build_dir=$(mktemp -d)
-if [ -d "$REPO/dist" ] && [ -f "$REPO/nginx/default.conf" ]; then
-  echo "[build]  thin nginx image from $REPO/dist/"
-  cp "$REPO/nginx/default.conf" "$build_dir/default.conf"
-  cp -R "$REPO/dist" "$build_dir/dist"
-  cat >"$build_dir/Dockerfile" <<'EOF'
+  build_dir=$(mktemp -d)
+  if [ -d "$REPO/dist" ] && [ -f "$REPO/nginx/default.conf" ]; then
+    echo "[build]  thin nginx image from $REPO/dist/"
+    cp "$REPO/nginx/default.conf" "$build_dir/default.conf"
+    cp -R "$REPO/dist" "$build_dir/dist"
+    cat >"$build_dir/Dockerfile" <<'EOF'
 FROM nginx:alpine
 COPY default.conf /etc/nginx/conf.d/default.conf
 COPY dist /tmp/dist
@@ -116,15 +116,15 @@ RUN set -e; \
   rm -rf /tmp/dist
 EXPOSE 8080
 EOF
-elif [ -f "$REPO/Dockerfile" ]; then
-  echo "[build]  real Dockerfile from $REPO/"
-  build_dir="$REPO"
-else
-  echo "error: no Dockerfile nor dist/ found in $REPO"
-  exit 1
-fi
-(cd "$build_dir" && docker build -t "$img" . 2>&1 | tail -2)
-fi  # end of else branch for psl_build hook
+  elif [ -f "$REPO/Dockerfile" ]; then
+    echo "[build]  real Dockerfile from $REPO/"
+    build_dir="$REPO"
+  else
+    echo "error: no Dockerfile nor dist/ found in $REPO"
+    exit 1
+  fi
+  (cd "$build_dir" && docker build -t "$img" . 2>&1 | tail -2)
+fi # end of else branch for psl_build hook
 # Also tag as the image name the consumer helmfile's chart default expects.
 docker tag "$img" "localhost:5001/${REPO_OWNER}/${app_name}:local-0.0.0" 2>/dev/null || true
 docker push "localhost:5001/${REPO_OWNER}/${app_name}:local-0.0.0" >/dev/null 2>&1 || true

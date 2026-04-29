@@ -30,7 +30,7 @@ preflight() {
       free_kb=${df_out#* }
       free_h=$(awk -v k="$free_kb" 'BEGIN{printf "%.0fG", k/1024/1024}')
       size_h=$(awk -v k="$size_kb" 'BEGIN{printf "%.0fG", k/1024/1024}')
-      if [ "$free_kb" -lt 5242880 ]; then  # < 5G
+      if [ "$free_kb" -lt 5242880 ]; then # < 5G
         warn=1
         line="$line  docker-data: ⚠ ${free_h}/${size_h} free (LOW)"
       else
@@ -42,8 +42,8 @@ preflight() {
   # kubelet pressure (skip if cluster not reachable)
   if kubectl --context "$context" get nodes >/dev/null 2>&1; then
     local pressure
-    pressure=$(kubectl --context "$context" get nodes -o json 2>/dev/null |
-      jq -r '.items[0].status.conditions[]
+    pressure=$(kubectl --context "$context" get nodes -o json 2>/dev/null \
+      | jq -r '.items[0].status.conditions[]
              | select((.type=="DiskPressure" or .type=="MemoryPressure") and .status=="True")
              | .type' 2>/dev/null | tr '\n' ',' | sed 's/,$//')
     if [ -n "$pressure" ]; then
