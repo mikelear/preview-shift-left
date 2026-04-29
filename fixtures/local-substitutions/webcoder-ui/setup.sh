@@ -1,19 +1,25 @@
 # Local substitutions for webcoder-ui — Tier 3 full auth stack on kind.
 #
 # Mirrors leartech-auth-ui's substitution pattern, extended for the
-# 5-release option-b helmfile webcoder-ui ships:
+# 6-release option-b helmfile webcoder-ui ships:
 #
-#   1. auth-postgresql      → skip; deploy mongo:7 substitute (auth-service
-#                              uses Mongo locally to dodge bitnami-pg arm64
-#                              + Hydra automigration init-container quirks)
-#   2. preview-auth-service → skip OCI; helm install from local chart with
-#                              memory-DSN Hydra subchart + Mongo store
-#   3. preview-auth-ui      → skip OCI; helm install from local chart,
-#                              points at preview-auth-service URL/Hydra
-#   4. preview (webcoder-ui)→ runs from helmfile (its image is already built
-#                              by the harness's standard thin-nginx flow);
-#                              re-rendered post-deploy with live URLs
-#   5. preview-gate         → runs from helmfile
+#   1. auth-postgresql        → runs from helmfile (bitnami-oci/postgresql
+#                                is multi-arch — no arm64 issue. Same
+#                                config as auth-service preview: single
+#                                instance, two DBs hydra + auth_service,
+#                                seeded via initdbScripts).
+#   2. preview-auth-service   → skip OCI; helm install from local chart
+#                                with memory-DSN Hydra subchart + Postgres
+#                                store backend (matches real preview shape)
+#   3. preview-auth-ui        → skip OCI; helm install from local chart,
+#                                points at preview-auth-service URL/Hydra
+#   4. preview-webcoder-service → skip OCI; helm install from local chart,
+#                                shell-mode (no DB), auth.serverUrl=preview
+#                                Hydra so it'd validate inbound JWTs
+#   5. preview (webcoder-ui)  → runs from helmfile (image built by harness's
+#                                thin-nginx flow); re-rendered post-deploy
+#                                with live URLs
+#   6. preview-gate           → runs from helmfile
 #
 # Why bother: the 5 webcoder-ui Playwright specs assert the full OIDC
 # chain (AuthGuard → Hydra discovery → login form → callback → dashboard
@@ -28,7 +34,7 @@
 #   psl_post()   — runs AFTER  helmfile sync (substitute deploys, TLS, seeds)
 
 # shellcheck disable=SC2034  # vars consumed by preview-up.sh after sourcing
-PSL_SELECTOR='name!=auth-postgresql,name!=preview-auth-service,name!=preview-auth-ui'
+PSL_SELECTOR='name!=preview-auth-service,name!=preview-auth-ui,name!=preview-webcoder-service'
 # shellcheck disable=SC2034
 PSL_PROTO="https"
 
@@ -106,6 +112,36 @@ EOF
   docker push localhost:5001/mikelear/leartech-auth-ui:latest >/dev/null 2>&1
   rm -rf "$au_build_dir"
 
+  # ---- webcoder-service chart -----------------------------------------
+  echo "[webcoder-ui] packaging + pushing webcoder-service chart"
+  local bff_chart="${WEBCODER_SERVICE_REPO:-$HOME/leartech/webcoder-service}/charts/webcoder-service"
+  (cd "$bff_chart" && helm dep build . >/dev/null 2>&1)
+  local bff_pkg
+  bff_pkg=$(helm package "$bff_chart" -d /tmp 2>/dev/null | awk -F': ' '{print $NF}')
+  helm push "$bff_pkg" oci://localhost:5001/charts >/dev/null 2>&1 || true
+
+  # ---- webcoder-service binary + image (arm64 native) -----------------
+  echo "[webcoder-ui] building webcoder-service (arm64 native) and pushing"
+  local bff_bin
+  bff_bin=$(mktemp)
+  (cd "${WEBCODER_SERVICE_REPO:-$HOME/leartech/webcoder-service}" \
+    && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+      go build -ldflags='-w -s' -o "$bff_bin" ./cmd/server) >/dev/null
+  local bff_build_dir
+  bff_build_dir=$(mktemp -d)
+  mv "$bff_bin" "$bff_build_dir/webcoder-service"
+  cat >"$bff_build_dir/Dockerfile" <<'EOF'
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates tzdata && adduser -D -u 1000 app
+USER app
+COPY webcoder-service /usr/local/bin/webcoder-service
+EXPOSE 8080
+ENTRYPOINT ["webcoder-service"]
+EOF
+  (cd "$bff_build_dir" && docker build -t localhost:5001/mikelear/webcoder-service:latest .) >/dev/null 2>&1
+  docker push localhost:5001/mikelear/webcoder-service:latest >/dev/null 2>&1
+  rm -rf "$bff_build_dir"
+
   # ---- jx stub on PATH (presync `jx secret copy` no-op) --------------
   $K create ns preview-secrets --dry-run=client -o yaml | $K apply -f - >/dev/null
   PSL_JX_STUB=$(mktemp -d)
@@ -126,44 +162,26 @@ psl_post() {
   local as_host="leartech-auth-service-pr${PULL_NUMBER}.${DOMAIN}"
   local au_host="leartech-auth-ui-pr${PULL_NUMBER}.${DOMAIN}"
   local hydra_host="hydra-pr${PULL_NUMBER}.${DOMAIN}"
+  local bff_host="webcoder-service-pr${PULL_NUMBER}.${DOMAIN}"
   local as_url="https://${as_host}:8443"
   local au_url="https://${au_host}:8443"
   local hydra_url="https://${hydra_host}:8443"
+  local bff_url="https://${bff_host}:8443"
   local client_id="${HYDRA_CLIENT_ID:-webcoder-ui}"
 
-  # ---- Substitute for auth-postgresql with mongo:7 -------------------
-  # Skipping bitnami-pg arm64 entirely — auth-service supports Mongo
-  # store, easier than fighting Hydra's automigration init container.
-  echo "[webcoder-ui] deploying auth-mongodb substitute (plain mongo:7)"
-  cat <<YAML | $K -n "$ns" apply -f - >/dev/null
-apiVersion: apps/v1
-kind: Deployment
-metadata: {name: auth-mongodb, labels: {app: auth-mongodb}}
-spec:
-  replicas: 1
-  selector: {matchLabels: {app: auth-mongodb}}
-  template:
-    metadata: {labels: {app: auth-mongodb}}
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo:7.0
-        ports: [{containerPort: 27017}]
-        volumeMounts: [{name: data, mountPath: /data/db}]
-        resources: {requests: {cpu: 100m, memory: 256Mi}}
-      volumes: [{name: data, emptyDir: {sizeLimit: 1Gi}}]
----
-apiVersion: v1
-kind: Service
-metadata: {name: auth-mongodb}
-spec:
-  selector: {app: auth-mongodb}
-  ports: [{port: 27017, targetPort: 27017}]
-YAML
-  $K -n "$ns" rollout status deploy/auth-mongodb --timeout=120s >/dev/null
+  # ---- Wait for helmfile-deployed Postgres to be ready ---------------
+  # auth-postgresql runs as a normal helmfile release (bitnami-oci/
+  # postgresql is multi-arch). Same shape as auth-service's own preview:
+  # single instance, two databases (hydra + auth_service) created via
+  # initdbScripts in webcoder-ui/preview/postgresql.yaml.
+  echo "[webcoder-ui] waiting for auth-postgresql to be ready"
+  $K -n "$ns" rollout status statefulset/auth-postgresql --timeout=180s >/dev/null
 
-  # ---- Substitute for preview-auth-service (Hydra subchart, memory DSN)
-  echo "[webcoder-ui] deploying preview-auth-service (local chart, memory DSN)"
+  # ---- Substitute for preview-auth-service (Hydra subchart, postgres) ----
+  # Hydra still uses memory DSN locally — the bitnami-pg startup race
+  # with Hydra's automigration init container has bitten before. Auth-
+  # service's user store IS Postgres (matches real preview shape).
+  echo "[webcoder-ui] deploying preview-auth-service (local chart, postgres store)"
   local as_chart="${AUTH_SERVICE_REPO:-$HOME/leartech/leartech-auth-service}/charts/leartech-auth-service"
   helm --kube-context "$CONTEXT" upgrade --install preview-auth-service "$as_chart" \
     -n "$ns" \
@@ -172,8 +190,8 @@ YAML
     --set image.pullPolicy=IfNotPresent \
     --set clusterID=local \
     --set "authUIURL=${au_url}" \
-    --set store.backend=mongo \
-    --set mongodb.uri="mongodb://auth-mongodb:27017" \
+    --set storeBackend=postgres \
+    --set "postgresql.dsn=postgres://auth_service:auth_service@auth-postgresql:5432/auth_service?sslmode=disable" \
     --set "jxRequirements.ingress.domain=${DOMAIN}" \
     --set "jxRequirements.ingress.namespaceSubDomain=-pr${PULL_NUMBER}." \
     --set "jxRequirements.ingress.serviceType=ClusterIP" \
@@ -185,6 +203,7 @@ YAML
     --set hydra.hydra.config.dsn=memory \
     --set 'hydra.hydra.config.secrets.system[0]=local-dev-system-secret-32chars-ok' \
     --set 'hydra.hydra.config.secrets.cookie[0]=local-dev-cookie-secret-32chars-ok' \
+    --set hydra.hydra.config.strategies.access_token=jwt \
     --set "hydra.hydra.config.urls.self.issuer=${hydra_url}" \
     --set "hydra.hydra.config.urls.self.public=${hydra_url}" \
     --set "hydra.hydra.config.urls.login=${au_url}/login" \
@@ -219,11 +238,29 @@ YAML
   $K -n "$ns" rollout status deploy/preview-auth-ui-leartech-auth-ui --timeout=60s >/dev/null 2>&1 \
     || $K -n "$ns" rollout status deploy/preview-auth-ui --timeout=60s >/dev/null
 
+  # ---- Substitute for preview-webcoder-service (BFF, shell-mode) -----
+  echo "[webcoder-ui] deploying preview-webcoder-service (local chart, shell-mode)"
+  local bff_chart="${WEBCODER_SERVICE_REPO:-$HOME/leartech/webcoder-service}/charts/webcoder-service"
+  helm --kube-context "$CONTEXT" upgrade --install preview-webcoder-service "$bff_chart" \
+    -n "$ns" \
+    --set image.repository=localhost:5001/mikelear/webcoder-service \
+    --set image.tag=latest \
+    --set image.pullPolicy=IfNotPresent \
+    --set "jxRequirements.ingress.domain=${DOMAIN}" \
+    --set "jxRequirements.ingress.namespaceSubDomain=-pr${PULL_NUMBER}." \
+    --set "jxRequirements.ingress.serviceType=ClusterIP" \
+    --set database.enabled=false \
+    --set migrations.enabled=false \
+    --set oauth.createHydraOAuthClients=false \
+    --set "auth.serverUrl=${hydra_url}" >/dev/null
+  $K -n "$ns" rollout status deploy/preview-webcoder-service --timeout=60s >/dev/null
+
   # ---- TLS + CORS on ingresses we own --------------------------------
   for ing_host in \
     "leartech-auth-service:${as_host}" \
     "preview-auth-service-hydra-public:${hydra_host}" \
-    "leartech-auth-ui:${au_host}"; do
+    "leartech-auth-ui:${au_host}" \
+    "webcoder-service:${bff_host}"; do
     local ing="${ing_host%%:*}"
     local hp="${ing_host##*:}"
     $K -n "$ns" patch ingress "$ing" --type=merge -p "$(
@@ -241,11 +278,21 @@ JSON
     "nginx.ingress.kubernetes.io/cors-allow-methods=GET, POST, OPTIONS" \
     "nginx.ingress.kubernetes.io/cors-allow-headers=Content-Type, Authorization" \
     >/dev/null 2>&1 || true
+  # webcoder-service ingress accepts CORS from webcoder-ui (the dashboard
+  # XHRs into /api/v1/* with the bearer token from the OIDC flow).
+  $K -n "$ns" annotate ingress webcoder-service --overwrite \
+    nginx.ingress.kubernetes.io/enable-cors=true \
+    "nginx.ingress.kubernetes.io/cors-allow-origin=${ui_url}" \
+    nginx.ingress.kubernetes.io/cors-allow-credentials=true \
+    "nginx.ingress.kubernetes.io/cors-allow-methods=GET, POST, PUT, DELETE, OPTIONS" \
+    "nginx.ingress.kubernetes.io/cors-allow-headers=Content-Type, Authorization" \
+    >/dev/null 2>&1 || true
 
   # ---- Re-render webcoder-ui (this PR's chart) with live URLs -------
   helm --kube-context "$CONTEXT" upgrade preview \
     "$REPO/charts/$CHART_NAME" \
     -n "$ns" --reuse-values \
+    --set "config.api=${bff_url}" \
     --set "config.auth.authority=${hydra_url}" \
     --set "config.auth.clientId=${client_id}" >/dev/null
   $K -n "$ns" rollout restart deploy/preview-${CHART_NAME} >/dev/null
@@ -272,39 +319,12 @@ JSON
       name=$(basename "$seed" .sh)
       # Skip the smoke + the OAuth flow check — preview-up.sh already
       # smoke-tests the URL, and the curl flow check belongs in tests
-      # not setup. We only run seed scripts: register-oauth-client +
-      # seed-test-user. 02-seed-test-user.sh expects Postgres but we're
-      # running Mongo locally — adapt: kubectl exec into mongo instead.
+      # not setup. The seed scripts we DO run: 01-register-oauth-client
+      # + 02-seed-test-user (which talks to the helmfile-deployed
+      # Postgres natively — no local override needed since auth-service
+      # is now Postgres-backed locally too).
       case "$name" in
         01-smoke|03-oauth-flow) continue ;;
-        02-seed-test-user)
-          # Local override: seed into mongo:7 substitute instead of pg
-          echo "[webcoder-ui]   $name (local mongo override)"
-          local hash
-          hash=$(python3 -c "
-import bcrypt
-print(bcrypt.hashpw(b'Test123!', bcrypt.gensalt(10)).decode())
-")
-          $K -n "$ns" exec deploy/auth-mongodb -- mongosh leartech-auth --quiet --eval "
-db.users.updateOne(
-  { email: 'test@leartech.com' },
-  { \$set: {
-      _id: 'user-test-001',
-      email: 'test@leartech.com',
-      passwordHash: '${hash}',
-      displayName: 'Test User',
-      permissions: ['User'],
-      active: true,
-      updatedAt: new Date()
-    },
-    \$setOnInsert: { createdAt: new Date() }
-  },
-  { upsert: true }
-);
-" >/dev/null 2>&1 && echo "[webcoder-ui]   ok: test@leartech.com seeded into mongo" \
-            || echo "[webcoder-ui]   (mongo seed non-zero — continuing)"
-          continue
-          ;;
       esac
       echo "[webcoder-ui]   $name"
       (
@@ -324,8 +344,9 @@ db.users.updateOne(
   fi
 
   echo "[webcoder-ui] stack URLs:"
-  echo "[webcoder-ui]   webcoder-ui:    $ui_url"
-  echo "[webcoder-ui]   auth-ui (login): $au_url"
-  echo "[webcoder-ui]   auth-service:   $as_url"
-  echo "[webcoder-ui]   Hydra:          $hydra_url"
+  echo "[webcoder-ui]   webcoder-ui:      $ui_url"
+  echo "[webcoder-ui]   webcoder-service: $bff_url"
+  echo "[webcoder-ui]   auth-ui (login):  $au_url"
+  echo "[webcoder-ui]   auth-service:     $as_url"
+  echo "[webcoder-ui]   Hydra:            $hydra_url"
 }

@@ -40,9 +40,22 @@ chromium_args:
 # under parallel workers (same gotcha as auth-ui's tier-3 scenario).
 workers: 1
 
-# Phase A: the two specs that don't depend on a working Hydra.
-# 02-unauth-redirects asserts the AuthGuard kicks the user toward Hydra
-# discovery — even when Hydra is unreachable, the redirect itself fires.
+# Full Tier 3 stack runs against the live local preview (kind + Hydra +
+# auth-service + auth-ui + mongo + this PR's webcoder-ui build). The
+# OIDC chain works end-to-end — login form renders, credentials accepted,
+# dashboard mounts with email from id_token, sign-out clears session.
+#
+# Locally green: 01, 02, 05. Login flow visibly works in 03 (dashboard
+# renders "Hello, test@leartech.com"), but the spec also asserts a
+# non-empty `user-id` claim — Hydra dev mode + memory DSN doesn't
+# surface `sub` to JS the same way production JWT access tokens do.
+# Real clusters with `strategies.access_token: jwt` don't repro.
+#
+# 04 (PR cards deep-link) currently lands on dashboard instead of
+# pr.component — separate routing investigation, not auth-stack.
 only:
   - 01-page-loads.spec.ts
   - 02-unauth-redirects.spec.ts
+  - 03-login-flow.spec.ts
+  - 04-pr-cards-render.spec.ts
+  - 05-sign-out.spec.ts

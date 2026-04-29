@@ -31,7 +31,9 @@
 # to helmfile sync.
 
 # shellcheck disable=SC2034  # PSL_SELECTOR/PSL_PROTO are read by preview-up.sh after sourcing.
-PSL_SELECTOR='name!=auth-mongodb,name!=preview-auth-service'
+# auth-postgresql is multi-arch — let helmfile deploy it normally.
+# Only skip the OCI auth-service pull (we sub it with the local chart).
+PSL_SELECTOR='name!=preview-auth-service'
 # shellcheck disable=SC2034
 PSL_PROTO="https"
 
@@ -95,46 +97,28 @@ psl_post() {
   local hydra_url="https://${hydra_host}:8443"
   local client_id="${HYDRA_CLIENT_ID:-frontend-services}"
 
-  # ---- Substitute for auth-mongodb (skipped in helmfile) -------------
-  echo "[auth-ui] deploying auth-mongodb substitute (plain mongo:7)"
-  cat <<YAML | $K -n "$ns" apply -f - >/dev/null
-apiVersion: apps/v1
-kind: Deployment
-metadata: {name: auth-mongodb, labels: {app: auth-mongodb}}
-spec:
-  replicas: 1
-  selector: {matchLabels: {app: auth-mongodb}}
-  template:
-    metadata: {labels: {app: auth-mongodb}}
-    spec:
-      containers:
-      - name: mongodb
-        image: mongo:7.0
-        ports: [{containerPort: 27017}]
-        volumeMounts: [{name: data, mountPath: /data/db}]
-        resources: {requests: {cpu: 100m, memory: 256Mi}}
-      volumes: [{name: data, emptyDir: {sizeLimit: 1Gi}}]
----
-apiVersion: v1
-kind: Service
-metadata: {name: auth-mongodb}
-spec:
-  selector: {app: auth-mongodb}
-  ports: [{port: 27017, targetPort: 27017}]
-YAML
-  $K -n "$ns" rollout status deploy/auth-mongodb --timeout=120s >/dev/null
+  # ---- Wait for helmfile-deployed Postgres to be ready ---------------
+  # auth-postgresql runs as a normal helmfile release (bitnami-oci/
+  # postgresql is multi-arch). Same shape as auth-service's own preview:
+  # single instance, two databases (hydra + auth_service) created via
+  # initdbScripts in leartech-auth-ui/preview/postgresql.yaml.
+  echo "[auth-ui] waiting for auth-postgresql to be ready"
+  $K -n "$ns" rollout status statefulset/auth-postgresql --timeout=180s >/dev/null
 
-  # ---- Substitute for preview-auth-service (bundled Hydra) -----------
-  echo "[auth-ui] deploying preview-auth-service substitute (local chart, memory DSN)"
+  # ---- Substitute for preview-auth-service (Hydra subchart, postgres) ----
+  # Hydra still uses memory DSN locally — keeps cold-start simple. The
+  # auth-service user store IS Postgres (matches real preview shape).
+  echo "[auth-ui] deploying preview-auth-service (local chart, postgres store)"
   local as_chart="${AUTH_SERVICE_REPO:-$HOME/leartech/leartech-auth-service}/charts/leartech-auth-service"
   helm --kube-context "$CONTEXT" upgrade --install preview-auth-service "$as_chart" \
     -n "$ns" \
     --set image.repository=localhost:5001/mikelear/leartech-auth-service \
     --set image.tag=latest \
-    --set image.pullPolicy=Never \
+    --set image.pullPolicy=IfNotPresent \
     --set clusterID=local \
     --set "authUIURL=${ui_url}" \
-    --set mongodb.uri="mongodb://auth-mongodb:27017" \
+    --set storeBackend=postgres \
+    --set "postgresql.dsn=postgres://auth_service:auth_service@auth-postgresql:5432/auth_service?sslmode=disable" \
     --set "jxRequirements.ingress.domain=${DOMAIN}" \
     --set "jxRequirements.ingress.namespaceSubDomain=-pr${PULL_NUMBER}." \
     --set "jxRequirements.ingress.serviceType=ClusterIP" \
@@ -146,6 +130,7 @@ YAML
     --set hydra.hydra.config.dsn=memory \
     --set 'hydra.hydra.config.secrets.system[0]=local-dev-system-secret-32chars-ok' \
     --set 'hydra.hydra.config.secrets.cookie[0]=local-dev-cookie-secret-32chars-ok' \
+    --set hydra.hydra.config.strategies.access_token=jwt \
     --set "hydra.hydra.config.urls.self.issuer=${hydra_url}" \
     --set "hydra.hydra.config.urls.self.public=${hydra_url}" \
     --set "hydra.hydra.config.urls.login=${ui_url}/login" \
