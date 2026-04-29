@@ -39,10 +39,10 @@ psl_build() {
   echo "[psl_build] go build linux/arm64 binary..."
   (cd "$REPO" \
     && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
-       go build -o "$tmp/mqube-architect" ./cmd/api/) || return 1
+      go build -o "$tmp/mqube-architect" ./cmd/api/) || return 1
 
   cp -R "$REPO/docs" "$tmp/docs"
-  cat > "$tmp/Dockerfile" <<'EOF'
+  cat >"$tmp/Dockerfile" <<'EOF'
 FROM alpine:3.21
 RUN apk upgrade --no-cache && apk --no-cache add git ca-certificates
 COPY mqube-architect /

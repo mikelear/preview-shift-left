@@ -36,14 +36,14 @@ PUBLIC_HELM_RE='(jenkins-x-charts\.github\.io|charts\.jenkins-x\.io|charts\.bitn
 
 is_public_image() {
   local img="$1"
-  if [[ "$img" != */* ]] || [[ "$img" =~ ^[^./]+:[^/]+$ && "$img" != *.*/* ]]; then
+  if [[ $img != */* ]] || [[ $img =~ ^[^./]+:[^/]+$ && $img != *.*/* ]]; then
     return 0
   fi
-  [[ "$img" =~ $PUBLIC_REGISTRY_RE ]]
+  [[ $img =~ $PUBLIC_REGISTRY_RE ]]
 }
 
 is_public_helm_repo() {
-  [[ "$1" =~ $PUBLIC_HELM_RE ]]
+  [[ $1 =~ $PUBLIC_HELM_RE ]]
 }
 
 # Render the chart the same way preview-up.sh would, with helmfile +
@@ -158,7 +158,7 @@ if [ -f "$HELMFILE" ]; then
 
   echo "$HF_JSON" | jq -r '.[] | select(.repositories) | .repositories[] | .url // ""' | while IFS= read -r url; do
     [ -z "$url" ] && continue
-    if is_public_helm_repo "$url" || [[ "$url" == "localhost:"* ]]; then
+    if is_public_helm_repo "$url" || [[ $url == "localhost:"* ]]; then
       :
     else
       echo "  ✗ private repo: $url"
@@ -171,13 +171,13 @@ if [ -f "$HELMFILE" ]; then
 
   while IFS=$'\t' read -r name chart; do
     [ -z "$name" ] && continue
-    if [[ "$chart" == ../* || "$chart" == ./* ]]; then
+    if [[ $chart == ../* || $chart == ./* ]]; then
       echo "  ✓ release: $name → $chart   (local chart)"
       LOCAL_RELEASE="$name"
     else
       repo_alias="${chart%%/*}"
       repo_url=$(echo "$REPO_URLS" | jq -r --arg n "$repo_alias" '.[$n] // ""')
-      if [ -n "$repo_url" ] && (is_public_helm_repo "$repo_url" || [[ "$repo_url" == "localhost:"* ]]); then
+      if [ -n "$repo_url" ] && (is_public_helm_repo "$repo_url" || [[ $repo_url == "localhost:"* ]]); then
         echo "  ✓ release: $name → $chart   (public: $repo_url)"
       else
         echo "  ✗ release: $name → $chart   (private dep — would 401)"
@@ -266,7 +266,7 @@ if [ -n "$MISSING_SECRETS" ]; then
     keys=$(secret_keys "$s")
     [ -z "$keys" ] && keys="(envFrom — keys unknown)"
     echo "      $s   keys=$keys"
-  done <<< "$MISSING_SECRETS"
+  done <<<"$MISSING_SECRETS"
 fi
 
 if [ -n "$MISSING_CMS" ]; then
@@ -276,7 +276,7 @@ if [ -n "$MISSING_CMS" ]; then
     keys=$(cm_keys "$c")
     [ -z "$keys" ] && keys="(whole-CM volume mount — common key: config.yaml)"
     echo "      $c   keys=$keys"
-  done <<< "$MISSING_CMS"
+  done <<<"$MISSING_CMS"
 fi
 
 # ---- 4. Container images --------------------------------------------
@@ -295,9 +295,10 @@ PRIVATE_IMAGES=()
 while IFS= read -r img; do
   [ -z "$img" ] && continue
   # Strip surrounding quotes if any (yq sometimes emits quoted strings).
-  img="${img%\"}"; img="${img#\"}"
-  if [[ "$img" == "draft:dev" || "$img" == "draft:latest" ]] \
-      || [[ "$img" == "localhost:5001/"* ]]; then
+  img="${img%\"}"
+  img="${img#\"}"
+  if [[ $img == "draft:dev" || $img == "draft:latest" ]] \
+    || [[ $img == "localhost:5001/"* ]]; then
     echo "  ✓ $img   (consumer's own — built locally)"
   elif is_public_image "$img"; then
     echo "  ✓ $img"
@@ -305,7 +306,7 @@ while IFS= read -r img; do
     echo "  ✗ $img   (private — patch deployment to public stub OR mirror)"
     PRIVATE_IMAGES+=("$img")
   fi
-done <<< "$images"
+done <<<"$images"
 
 es_count=$(echo "$DOCS_JSON" | jq '[.[] | select(.kind=="ExternalSecret")] | length')
 if [ "$es_count" -gt 0 ]; then
@@ -332,10 +333,10 @@ PSL_SELECTOR=\"name=$LOCAL_RELEASE\"
 "
 fi
 
-skeleton+="
+skeleton+='
 psl_pre() {
-  local ns=\"\$1\"
-"
+  local ns="$1"
+'
 
 while IFS= read -r s; do
   [ -z "$s" ] && continue
@@ -345,14 +346,14 @@ while IFS= read -r s; do
 "
   else
     args=""
-    IFS=',' read -ra arr <<< "$keys"
+    IFS=',' read -ra arr <<<"$keys"
     for k in "${arr[@]}"; do
       args+=" --from-literal=$k=stub"
     done
     skeleton+="  \$K -n \"\$ns\" create secret generic $s$args --dry-run=client -o yaml | \$K apply -f - >/dev/null
 "
   fi
-done <<< "$MISSING_SECRETS"
+done <<<"$MISSING_SECRETS"
 
 while IFS= read -r c; do
   [ -z "$c" ] && continue
@@ -361,20 +362,20 @@ while IFS= read -r c; do
   if [ -z "$keys" ]; then
     args=" --from-literal=config.yaml='# stub'"
   else
-    IFS=',' read -ra arr <<< "$keys"
+    IFS=',' read -ra arr <<<"$keys"
     for k in "${arr[@]}"; do
       args+=" --from-literal=$k='# stub'"
     done
   fi
   skeleton+="  \$K -n \"\$ns\" create configmap $c$args --dry-run=client -o yaml | \$K apply -f - >/dev/null
 "
-done <<< "$MISSING_CMS"
+done <<<"$MISSING_CMS"
 
 if [ "${#PRIVATE_IMAGES[@]}" -gt 0 ]; then
-  skeleton+="
+  skeleton+='
   # Private images detected — patch the deployment to use a public stub OR
-  # mirror to localhost:5001 (\`az acr login && regctl image copy ...\`):
-"
+  # mirror to localhost:5001 (`az acr login && regctl image copy ...`):
+'
   for img in "${PRIVATE_IMAGES[@]}"; do
     skeleton+="  #   $img
 "
@@ -392,7 +393,7 @@ if [ "$WRITE_SKELETON" = "1" ]; then
   if [ -f "$out_dir/setup.sh" ]; then
     echo "[skip-write] $out_dir/setup.sh exists — skeleton not written. Diff manually if you want to merge."
   else
-    echo "$skeleton" > "$out_dir/setup.sh"
+    echo "$skeleton" >"$out_dir/setup.sh"
     chmod +x "$out_dir/setup.sh"
     echo "[wrote] $out_dir/setup.sh"
   fi

@@ -18,4 +18,3 @@ psl_pre() {
   $K -n "$ns" create secret generic redis --from-literal=redis.txt=stub --dry-run=client -o yaml | $K apply -f - >/dev/null
   $K -n "$ns" create secret generic rmq-rabbitmq-ha --from-literal=rabbitmq-hostname=stub --from-literal=rabbitmq-password=stub --from-literal=rabbitmq-username=stub --dry-run=client -o yaml | $K apply -f - >/dev/null
 }
-

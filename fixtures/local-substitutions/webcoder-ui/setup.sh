@@ -325,7 +325,7 @@ JSON
       # Postgres natively — no local override needed since auth-service
       # is now Postgres-backed locally too).
       case "$name" in
-        01-smoke|03-oauth-flow) continue ;;
+        01-smoke | 03-oauth-flow) continue ;;
       esac
       echo "[webcoder-ui]   $name"
       (
