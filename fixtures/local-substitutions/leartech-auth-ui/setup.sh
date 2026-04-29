@@ -121,8 +121,8 @@ psl_post() {
   local as_values_rendered
   as_values_rendered=$(mktemp)
   sed \
-    -e "s|{{ requiredEnv \"DOCKER_REGISTRY\" }}|localhost:5001|g" \
-    -e "s|{{ requiredEnv \"DOCKER_REGISTRY_ORG\" }}|mikelear|g" \
+    -e 's|{{ requiredEnv "DOCKER_REGISTRY" }}|localhost:5001|g' \
+    -e 's|{{ requiredEnv "DOCKER_REGISTRY_ORG" }}|mikelear|g' \
     "$REPO/preview/auth-service-values.yaml.gotmpl" >"$as_values_rendered"
   helm --kube-context "$CONTEXT" upgrade --install preview-auth-service "$as_chart" \
     -n "$ns" \

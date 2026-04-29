@@ -194,9 +194,9 @@ psl_post() {
   as_values_rendered=$(mktemp)
   # Render the gotmpl tokens (only requiredEnv ones used in the file):
   sed \
-    -e "s|{{ requiredEnv \"DOCKER_REGISTRY\" }}|localhost:5001|g" \
-    -e "s|{{ requiredEnv \"DOCKER_REGISTRY_ORG\" }}|mikelear|g" \
-    "$REPO/preview/auth-service-values.yaml.gotmpl" > "$as_values_rendered"
+    -e 's|{{ requiredEnv "DOCKER_REGISTRY" }}|localhost:5001|g' \
+    -e 's|{{ requiredEnv "DOCKER_REGISTRY_ORG" }}|mikelear|g' \
+    "$REPO/preview/auth-service-values.yaml.gotmpl" >"$as_values_rendered"
   helm --kube-context "$CONTEXT" upgrade --install preview-auth-service "$as_chart" \
     -n "$ns" \
     -f "$as_values_rendered" \
