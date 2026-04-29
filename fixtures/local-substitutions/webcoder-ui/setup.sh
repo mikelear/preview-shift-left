@@ -179,27 +179,37 @@ psl_post() {
   $K -n "$ns" rollout status statefulset/auth-postgresql --timeout=180s >/dev/null
 
   # ---- Substitute for preview-auth-service (Hydra subchart, postgres) ----
-  # Hydra still uses memory DSN locally — the bitnami-pg startup race
-  # with Hydra's automigration init container has bitten before. Auth-
-  # service's user store IS Postgres (matches real preview shape).
+  # Hydra uses memory DSN locally (bitnami-pg startup race with Hydra's
+  # automigration init container has bitten before). Auth-service user
+  # store IS Postgres (matches real preview shape).
+  #
+  # Pulls the consumer's own auth-service-values.yaml.gotmpl so a wrong
+  # key in that file fails locally too — that's exactly how PR #5
+  # initially hit MONGO_URI on CI when shift-left passed (storeBackend
+  # vs store.backend silent typo, hidden by --set overrides). Only the
+  # truly local-specific bits stay as --set overrides below.
   echo "[webcoder-ui] deploying preview-auth-service (local chart, postgres store)"
   local as_chart="${AUTH_SERVICE_REPO:-$HOME/leartech/leartech-auth-service}/charts/leartech-auth-service"
+  local as_values_rendered
+  as_values_rendered=$(mktemp)
+  # Render the gotmpl tokens (only requiredEnv ones used in the file):
+  sed \
+    -e "s|{{ requiredEnv \"DOCKER_REGISTRY\" }}|localhost:5001|g" \
+    -e "s|{{ requiredEnv \"DOCKER_REGISTRY_ORG\" }}|mikelear|g" \
+    "$REPO/preview/auth-service-values.yaml.gotmpl" > "$as_values_rendered"
   helm --kube-context "$CONTEXT" upgrade --install preview-auth-service "$as_chart" \
     -n "$ns" \
+    -f "$as_values_rendered" \
     --set image.repository=localhost:5001/mikelear/leartech-auth-service \
     --set image.tag=latest \
     --set image.pullPolicy=IfNotPresent \
     --set clusterID=local \
     --set "authUIURL=${au_url}" \
-    --set storeBackend=postgres \
-    --set "postgresql.dsn=postgres://auth_service:auth_service@auth-postgresql:5432/auth_service?sslmode=disable" \
     --set "jxRequirements.ingress.domain=${DOMAIN}" \
     --set "jxRequirements.ingress.namespaceSubDomain=-pr${PULL_NUMBER}." \
     --set "jxRequirements.ingress.serviceType=ClusterIP" \
     --set externalSecrets.gcp.enabled=false \
     --set externalSecrets.azure.enabled=false \
-    --set oauth.createHydraOAuthClients=false \
-    --set hydra.maester.enabled=false \
     --set hydra.hydra.dev=true \
     --set hydra.hydra.config.dsn=memory \
     --set 'hydra.hydra.config.secrets.system[0]=local-dev-system-secret-32chars-ok' \
@@ -219,6 +229,7 @@ psl_post() {
     --set 'hydra.ingress.public.hosts[0].paths[0].pathType=Prefix' \
     --set hydra.automigration.enabled=false \
     --set hydra.secret.enabled=true >/dev/null
+  rm -f "$as_values_rendered"
   $K -n "$ns" rollout status deploy/preview-auth-service-hydra --timeout=120s >/dev/null
   $K -n "$ns" rollout status deploy/preview-auth-service-leartech-auth-service --timeout=60s >/dev/null
 
